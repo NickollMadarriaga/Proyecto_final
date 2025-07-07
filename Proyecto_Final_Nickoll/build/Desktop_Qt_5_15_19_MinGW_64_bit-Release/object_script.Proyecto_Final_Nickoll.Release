@@ -1,0 +1,10 @@
+release/arma.o
+release/enemigo.o
+release/main.o
+release/mainwindow.o
+release/mancha.o
+release/personaje.o
+release/potenciador.o
+release/protagonista.o
+release/qrc_rcs.o
+release/moc_mainwindow.o
