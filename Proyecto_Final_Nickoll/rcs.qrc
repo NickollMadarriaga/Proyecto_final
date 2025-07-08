@@ -8,8 +8,6 @@
         <file>Imagenes/BotonLvl2M.png</file>
         <file>Imagenes/BotonLvl3.png</file>
         <file>Imagenes/BotonLvl3M.png</file>
-        <file>Imagenes/BotonSalir.png</file>
-        <file>Imagenes/BotonSalirM.png</file>
         <file>Imagenes/Volver.png</file>
         <file>Imagenes/VolverM.png</file>
         <file>Imagenes/FondoNivel1.png</file>
@@ -17,5 +15,12 @@
         <file>Imagenes/FondoNivel3.png</file>
         <file>Imagenes/GokuSprite.png</file>
         <file>Imagenes/GokuSpriteLvl1.png</file>
+        <file>Imagenes/Bala.png</file>
+        <file>Imagenes/BotonLvl2B.png</file>
+        <file>Imagenes/BotonLvl3B.png</file>
+        <file>Imagenes/Vida1.png</file>
+        <file>Imagenes/Vida2.png</file>
+        <file>Imagenes/VidaCom.png</file>
+        <file>Imagenes/VidaFin.png</file>
     </qresource>
 </RCC>

@@ -11,6 +11,7 @@ class Personaje : public QObject, public QGraphicsPixmapItem
     Q_OBJECT
 
 public:
+
     enum ModoAnimacion { Permanente, PorEvento };
 
     Personaje(QString rutaSpritesheet,
@@ -27,6 +28,14 @@ public:
     void moverseDerecha();
     void detenerMovimiento();
     void iniciarAnimacionEvento();
+    void setModoAnimacion(ModoAnimacion nuevoModo) {
+        modoAnimacion = nuevoModo;
+    }
+    void resetearAlPrimerFrame();
+
+signals:
+    void animacionEventoTerminada();
+
 
 private slots:
     void actualizarAnimacion();
@@ -50,6 +59,8 @@ private:
     const int filaReposoIzquierda = 1;
     const int filaMovimientoDerecha = 2;
     const int filaMovimientoIzquierda = 3;
+
+    bool mantenerUltimoFrame;
 };
 
 #endif // PERSONAJE_H

@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include "personaje.h"
+#include "indicadorvida.h"
 #include <QMainWindow>
 #include <QGraphicsView>
 #include <QGraphicsScene>
@@ -36,11 +37,14 @@ private slots:
     void Nivel2();
     void Nivel3();
     void limpiarMenu();
+    void actualizarParabola();
+    void manejarFinAnimacionEvento();
 
 private:
     Ui::MainWindow *ui;
 
     QGraphicsView *vista = nullptr;
+    QGraphicsScene *scene = nullptr;
 
     // Multimedia del menú
     QMediaPlayer *videoPlayer = nullptr;
@@ -60,10 +64,28 @@ private:
     void agregarBotonVolver();
     // De la clase propia 'personaje' creamos al maravilloso goku
     Personaje *goku;
+    QSet<int> teclasPresionadas;
 
-    bool teclaA_presionada = false;
-    bool teclaD_presionada = false;
     bool controlesActivos = false;
+    bool permitirMovimientoVertical = true;
+
+    // Pal nivel 1
+    int contadorEspacio = 0;
+    QGraphicsPathItem *lineaParabola = nullptr;
+    QTimer *timerParabola = nullptr;
+    double angulo = 10.0;
+    double velocidad = 70.0;
+    bool anguloFijado = false;
+    bool velocidadFijada = false;
+    bool subiendoAngulo = true;
+    bool subiendoVelocidad = true;
+    bool aumentandoAngulo = true;
+    bool aumentandoVelocidad = true;
+    double anguloBala = 0.0;
+    double velocidadBala = 0.0;
+
+    IndicadorVida *indicadorVida;
+    int vida;
 
 };
 

@@ -1,14 +1,14 @@
-// mainwindow.cpp
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include "bala.h"
+#include "indicadorvida.h"
 #include <QKeyEvent>
 #include <QMediaPlaylist>
 #include <QPixmap>
 #include <QBitmap>
 #include <QApplication>
 #include <QDebug>
-#include <QTimer>
-#include <QGraphicsPixmapItem>
+#include <QtMath>
 
 class HoverIconEventFilter : public QObject
 {
@@ -30,7 +30,7 @@ protected:
 };
 
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent), ui(new Ui::MainWindow)
+    : QMainWindow(parent), ui(new Ui::MainWindow), vida(3)
 {
     ui->setupUi(this);
     this->resize(1200, 675);
@@ -39,7 +39,6 @@ MainWindow::MainWindow(QWidget *parent)
 
 void MainWindow::Inicio()
 {
-    // VIDEO
     QMediaPlaylist *videoPlaylist = new QMediaPlaylist(this);
     videoPlaylist->addMedia(QUrl("qrc:/Videos/inicio.mp4"));
     videoPlaylist->setPlaybackMode(QMediaPlaylist::Loop);
@@ -55,7 +54,6 @@ void MainWindow::Inicio()
     videoWidget->show();
     videoPlayer->play();
 
-    // AUDIO
     QMediaPlaylist *audioPlaylist = new QMediaPlaylist(this);
     audioPlaylist->addMedia(QUrl("qrc:/Audios/opening.mp3"));
     audioPlaylist->setPlaybackMode(QMediaPlaylist::Loop);
@@ -65,10 +63,10 @@ void MainWindow::Inicio()
     audioPlayer->setVolume(100);
     audioPlayer->play();
 
-    // Mini funcion que al llamarla crea un boton de una vez con la animacion al pasar el mouse
     auto addBtn = [this](const QString &img, const QString &hover, const QPoint &pos, std::function<void()> cb) {
         QPixmap pixmapNormal(img), pixmapHover(hover);
         QPushButton *boton = new QPushButton(this);
+
         boton->setIcon(QIcon(pixmapNormal));
         boton->setIconSize(pixmapNormal.size());
         boton->setFlat(true);
@@ -81,24 +79,23 @@ void MainWindow::Inicio()
         boton->show();
         menuButtons.append(boton);
     };
-    // Creacion de los botones con lo anterior
-    addBtn(":/Imagenes/BotonLvl1.png", ":/Imagenes/BotonLvl1M.png", QPoint(150, 500), [this]() {
-        // Tambien se envia a lo anterior, esta parte le da la función a los botones
+
+    addBtn(":/Imagenes/BotonLvl1.png", ":/Imagenes/BotonLvl1M.png", QPoint(100, 500), [this]() {
         limpiarMenu();
         Nivel1();
     });
 
-    addBtn(":/Imagenes/BotonLvl2.png", ":/Imagenes/BotonLvl2M.png", QPoint(500, 500), [this]() {
+    addBtn(":/Imagenes/BotonLvl2.png", ":/Imagenes/BotonLvl2M.png", QPoint(550, 500), [this]() {
         limpiarMenu();
         Nivel2();
     });
 
-    addBtn(":/Imagenes/BotonLvl3.png", ":/Imagenes/BotonLvl3M.png", QPoint(850, 525), [this]() {
+    addBtn(":/Imagenes/BotonLvl3.png", ":/Imagenes/BotonLvl3M.png", QPoint(1000, 525), [this]() {
         limpiarMenu();
         Nivel3();
     });
 
-    addBtn(":/Imagenes/BotonSalir.png", ":/Imagenes/BotonSalirM.png", QPoint(850, 100), []() {
+    addBtn(":/Imagenes/Volver.png", ":/Imagenes/VolverM.png", QPoint(1115, 22), []() {
         qDebug() << "Saliendo del juego...";
         qApp->quit();
     });
@@ -106,7 +103,6 @@ void MainWindow::Inicio()
 
 void MainWindow::limpiarMenu()
 {
-    // Limpia el video y el audio del menu al salir de este, para mejor uso de la memoria
     for (QPushButton *btn : menuButtons) {
         btn->hide();
         btn->deleteLater();
@@ -130,10 +126,259 @@ void MainWindow::limpiarMenu()
     }
 }
 
+void MainWindow::agregarBotonVolver()
+{
+    addTransparentButton(":/Imagenes/Volver.png", ":/Imagenes/VolverM.png", QPoint(1115, 22), [this]() {
+        vista->setScene(nullptr);
+        delete vista;
+        vista = nullptr;
+        Inicio();
+    });
+}
+
+void MainWindow::Nivel1()
+{
+    vista = new QGraphicsView(this);
+    vista->setGeometry(0, 0, 1200, 675);
+    vista->show();
+
+    scene = new QGraphicsScene(this);
+    vista->setScene(scene);
+    vista->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    vista->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    vista->setFixedSize(1200, 675);
+
+    QGraphicsPixmapItem *fondo = new QGraphicsPixmapItem(QPixmap(":/Imagenes/FondoNivel1.png"));
+    scene->addItem(fondo);
+
+    agregarBotonVolver();
+    goku = new Personaje(":/Imagenes/GokuSpriteLvl1.png", 63, 69, 4, 1, Personaje::PorEvento);
+    scene->addItem(goku);
+    goku->setPos(10, 100);
+    goku->setScale(3);
+
+    controlesActivos = false;
+    contadorEspacio = 0;
+
+    angulo = 10.0;
+    velocidad = 70.0;
+    anguloFijado = false;
+    velocidadFijada = false;
+    aumentandoAngulo = true;
+    aumentandoVelocidad = true;
+
+    lineaParabola = new QGraphicsPathItem();
+    QPen pen(Qt::yellow);
+    pen.setStyle(Qt::DashLine);
+    pen.setWidth(2);
+    lineaParabola->setPen(pen);
+    scene->addItem(lineaParabola);
+
+    timerParabola = new QTimer(this);
+    connect(timerParabola, &QTimer::timeout, this, &MainWindow::actualizarParabola);
+    timerParabola->start(100);
+
+    indicadorVida = new IndicadorVida();
+    scene->addItem(indicadorVida);
+    indicadorVida->setPos(0, 529);
+    indicadorVida->setScale(1.5);
+    indicadorVida->setVida(vida);
+}
+
+void MainWindow::actualizarParabola()
+{
+    if (!anguloFijado) {
+        if (angulo >= 60.0) aumentandoAngulo = false;
+        if (angulo <= 10.0) aumentandoAngulo = true;
+        angulo += aumentandoAngulo ? 2.0 : -2.0;
+    } else if (!velocidadFijada) {
+        if (velocidad >= 80.0) aumentandoVelocidad = false;
+        if (velocidad <= 30.0) aumentandoVelocidad = true;
+        velocidad += aumentandoVelocidad ? 2.0 : -2.0;
+    }
+
+    if (lineaParabola) {
+        scene->removeItem(lineaParabola);
+        delete lineaParabola;
+        lineaParabola = nullptr;
+    }
+
+    QPainterPath path;
+    QPointF origen(148, 153);
+    double g = 9.8;
+    double rad = qDegreesToRadians(angulo);
+    double vx = velocidad * std::cos(rad);
+    double vy = -velocidad * std::sin(rad);
+    double t = 0.0;
+    double dt = 0.1;
+
+    path.moveTo(origen);
+
+    while (true) {
+        double x = vx * t;
+        double y = vy * t + 0.5 * g * t * t;
+        QPointF punto(origen.x() + x, origen.y() + y);
+        if (punto.y() >= 500) break;
+        path.lineTo(punto);
+        t += dt;
+    }
+
+    lineaParabola = scene->addPath(path, QPen(Qt::yellow, 2, Qt::DashLine));
+}
+
+void MainWindow::manejarFinAnimacionEvento()
+{
+    if (lineaParabola) lineaParabola->hide();
+
+    QPointF origen(148, 153);
+    Bala *bala = new Bala(origen, anguloBala, velocidadBala);
+    scene->addItem(bala);
+
+    connect(bala, &Bala::balaDestruida, this, [this]() {
+        // Resetear el personaje al primer frame
+        if (goku) {
+            goku->resetearAlPrimerFrame();
+        }
+
+        angulo = 10.0;
+        velocidad = 70.0;
+        anguloFijado = false;
+        velocidadFijada = false;
+        aumentandoAngulo = true;
+        aumentandoVelocidad = true;
+        if (lineaParabola) lineaParabola->show();
+        if (timerParabola) timerParabola->start(100);
+        contadorEspacio = 0;
+    });
+}
+
+void MainWindow::Nivel2()
+{
+    vista = new QGraphicsView(this);
+    vista->setGeometry(0, 0, 1200, 675);
+    vista->show();
+
+    QGraphicsScene *scene = new QGraphicsScene(this);
+    vista->setScene(scene);
+
+    vista->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    vista->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    vista->setFixedSize(1200, 675);
+
+    QGraphicsPixmapItem *fondo = new QGraphicsPixmapItem(QPixmap(":/Imagenes/FondoNivel2.png"));
+    scene->addItem(fondo);
+
+    agregarBotonVolver();
+
+    goku = new Personaje(":/Imagenes/GokuSprite.png", 61, 62, 3, 4, Personaje::Permanente);
+    scene->addItem(goku);
+    goku->setPos(400, 400);
+    goku->setScale(3);
+
+    controlesActivos = true;
+    permitirMovimientoVertical = false;
+
+    indicadorVida = new IndicadorVida();
+    scene->addItem(indicadorVida);
+    indicadorVida->setPos(0, 529);
+    indicadorVida->setScale(1.5);
+    indicadorVida->setVida(vida);
+}
+
+void MainWindow::Nivel3()
+{
+    vista = new QGraphicsView(this);
+    vista->setGeometry(0, 0, 1200, 675);
+    vista->show();
+
+    QGraphicsScene *scene = new QGraphicsScene(this);
+    vista->setScene(scene);
+
+    vista->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    vista->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    vista->setFixedSize(1200, 675);
+
+    QGraphicsPixmapItem *fondo = new QGraphicsPixmapItem(QPixmap(":/Imagenes/FondoNivel3.png"));
+    scene->addItem(fondo);
+
+    agregarBotonVolver();
+
+    goku = new Personaje(":/Imagenes/GokuSprite.png", 61, 62, 3, 4, Personaje::Permanente);
+    scene->addItem(goku);
+    goku->setPos(400, 300);
+    goku->setScale(3);
+
+    controlesActivos = true;
+    permitirMovimientoVertical = true;
+
+    indicadorVida = new IndicadorVida();
+    scene->addItem(indicadorVida);
+    indicadorVida->setPos(0, 529);
+    indicadorVida->setScale(1.5);
+    indicadorVida->setVida(vida);
+}
+
+void MainWindow::keyPressEvent(QKeyEvent *event)
+{
+    if (!goku) return;
+
+    int key = event->key();
+
+    if (vista && vista->scene() == scene && scene && goku->scene() == scene) {
+        if (key == Qt::Key_Space) {
+            contadorEspacio++;
+            if (contadorEspacio == 1) {
+                anguloFijado = true;
+                anguloBala = angulo;
+            } else if (contadorEspacio == 2) {
+                velocidadFijada = true;
+                velocidadBala = velocidad;
+                if (timerParabola) timerParabola->stop();
+                if (lineaParabola) lineaParabola->hide();
+                goku->iniciarAnimacionEvento();
+                //linea usada para calibrar de donde salia el disparo y la parabola
+                //goku->setModoAnimacion(Personaje::Permanente);
+                QTimer::singleShot(1000, this, &MainWindow::manejarFinAnimacionEvento);
+            }
+            return;
+        }
+    }
+
+    if (!controlesActivos) return;
+    if (teclasPresionadas.contains(key)) return;
+
+    teclasPresionadas.insert(key);
+
+    switch (key) {
+    case Qt::Key_W:
+        if (permitirMovimientoVertical) goku->moverseArriba();
+        break;
+    case Qt::Key_S:
+        if (permitirMovimientoVertical) goku->moverseAbajo();
+        break;
+    case Qt::Key_A:
+        goku->moverseIzquierda();
+        break;
+    case Qt::Key_D:
+        goku->moverseDerecha();
+        break;
+    }
+}
+
+void MainWindow::keyReleaseEvent(QKeyEvent *event)
+{
+    if (!controlesActivos || !goku) return;
+
+    int key = event->key();
+    teclasPresionadas.remove(key);
+
+    if (key == Qt::Key_A || key == Qt::Key_D) {
+        goku->detenerMovimiento();
+    }
+}
+
 void MainWindow::addTransparentButton(const QString &imagenNormal, const QString &imagenHover, const QPoint &posicion, std::function<void()> onClick)
 {
-    //Se supermone una imagen sobre otra, solo para que al pasar el mouse parezca que los botones tienen efecto
-
     QPixmap pixmapNormal(imagenNormal);
     QPixmap pixmapHover(imagenHover);
 
@@ -149,118 +394,6 @@ void MainWindow::addTransparentButton(const QString &imagenNormal, const QString
     connect(boton, &QPushButton::clicked, this, [onClick]() { onClick(); });
     boton->show();
 }
-
-void MainWindow::agregarBotonVolver()
-{
-    //Boton para volver al menu desde algun nivel
-    addTransparentButton(":/Imagenes/Volver.png", ":/Imagenes/VolverM.png", QPoint(30, 30), [this]() {
-        vista->setScene(nullptr);
-        delete vista;
-        vista = nullptr;
-        Inicio();
-    });
-}
-
-void MainWindow::Nivel1()
-{
-    vista = new QGraphicsView(this);
-    vista->setGeometry(0, 0, 1200, 675);
-    vista->show();
-
-    QGraphicsScene *scene = new QGraphicsScene(this);
-    vista->setScene(scene);
-
-    QGraphicsPixmapItem *fondo = new QGraphicsPixmapItem(QPixmap(":/Imagenes/FondoNivel1.png"));
-    scene->addItem(fondo);
-
-    agregarBotonVolver();
-    goku = new Personaje(":/Imagenes/GokuSpriteLvl1.png", 63, 69, 4, 1, Personaje::PorEvento);
-    scene->addItem(goku);
-    goku->setPos(400, 300);
-    goku->setScale(3);
-
-    controlesActivos = false;
-
-    goku->iniciarAnimacionEvento();
-}
-
-void MainWindow::Nivel2()
-{
-    vista = new QGraphicsView(this);
-    vista->setGeometry(0, 0, 1200, 675);
-    vista->show();
-
-    QGraphicsScene *scene = new QGraphicsScene(this);
-    vista->setScene(scene);
-
-    QGraphicsPixmapItem *fondo = new QGraphicsPixmapItem(QPixmap(":/Imagenes/FondoNivel2.png"));
-    scene->addItem(fondo);
-
-    agregarBotonVolver();
-
-    goku = new Personaje(":/Imagenes/GokuSprite.png", 61, 62, 3, 4, Personaje::Permanente);
-    scene->addItem(goku);
-    goku->setPos(400, 300);
-    goku->setScale(3);
-
-    controlesActivos = true;
-
-}
-
-void MainWindow::Nivel3()
-{
-    vista = new QGraphicsView(this);
-    vista->setGeometry(0, 0, 1200, 675);
-    vista->show();
-
-    QGraphicsScene *scene = new QGraphicsScene(this);
-    vista->setScene(scene);
-
-    QGraphicsPixmapItem *fondo = new QGraphicsPixmapItem(QPixmap(":/Imagenes/FondoNivel3.png"));
-    scene->addItem(fondo);
-
-    agregarBotonVolver();
-
-    goku = new Personaje(":/Imagenes/GokuSprite.png", 61, 62, 3, 4, Personaje::Permanente);
-    scene->addItem(goku);
-    goku->setPos(400, 300);
-    goku->setScale(3);
-
-    controlesActivos = true;
-
-}
-
-#include <QKeyEvent>
-
-void MainWindow::keyPressEvent(QKeyEvent *event)
-{
-    if (!controlesActivos || !goku) return;
-
-    switch (event->key()) {
-    case Qt::Key_W:
-        goku->moverseArriba();
-        break;
-    case Qt::Key_S:
-        goku->moverseAbajo();
-        break;
-    case Qt::Key_A:
-        goku->moverseIzquierda();
-        break;
-    case Qt::Key_D:
-        goku->moverseDerecha();
-        break;
-    }
-}
-
-void MainWindow::keyReleaseEvent(QKeyEvent *event)
-{
-    if (!controlesActivos || !goku) return;
-
-    if (event->key() == Qt::Key_A || event->key() == Qt::Key_D) {
-        goku->detenerMovimiento();
-    }
-}
-
 
 
 MainWindow::~MainWindow()
