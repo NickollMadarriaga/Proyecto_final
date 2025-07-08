@@ -1,0 +1,21 @@
+<RCC>
+    <qresource prefix="/">
+        <file>Videos/inicio.mp4</file>
+        <file>Audios/opening.mp3</file>
+        <file>Imagenes/BotonLvl1.png</file>
+        <file>Imagenes/BotonLvl1M.png</file>
+        <file>Imagenes/BotonLvl2.png</file>
+        <file>Imagenes/BotonLvl2M.png</file>
+        <file>Imagenes/BotonLvl3.png</file>
+        <file>Imagenes/BotonLvl3M.png</file>
+        <file>Imagenes/BotonSalir.png</file>
+        <file>Imagenes/BotonSalirM.png</file>
+        <file>Imagenes/Volver.png</file>
+        <file>Imagenes/VolverM.png</file>
+        <file>Imagenes/FondoNivel1.png</file>
+        <file>Imagenes/FondoNivel2.png</file>
+        <file>Imagenes/FondoNivel3.png</file>
+        <file>Imagenes/GokuSprite.png</file>
+        <file>Imagenes/GokuSpriteLvl1.png</file>
+    </qresource>
+</RCC>
