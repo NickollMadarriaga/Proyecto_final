@@ -4,6 +4,7 @@
 #include <QGraphicsPixmapItem>
 #include <QPixmap>
 #include <QTimer>
+#include <QObject>
 
 class Personaje : public QObject, public QGraphicsPixmapItem
 {
@@ -16,15 +17,15 @@ public:
               int anchoSprite,
               int altoSprite,
               int columnas,
-              int filaInicial = 1,
-              ModoAnimacion modo = Permanente,
+              int filas,
+              ModoAnimacion modo,
               QGraphicsItem *parent = nullptr);
 
     void moverseArriba();
     void moverseAbajo();
     void moverseIzquierda();
     void moverseDerecha();
-
+    void detenerMovimiento();
     void iniciarAnimacionEvento();
 
 private slots:
@@ -36,12 +37,19 @@ private:
     int anchoFotograma;
     int altoFotograma;
     int columnasTotales;
+    int filasTotales;
     int filaActual;
     int contador;
-    bool animacionEnCurso;
+
+    bool estaEnMovimiento;
     ModoAnimacion modoAnimacion;
 
     QTimer *timerAnimacion;
+
+    const int filaReposoDerecha = 0;
+    const int filaReposoIzquierda = 1;
+    const int filaMovimientoDerecha = 2;
+    const int filaMovimientoIzquierda = 3;
 };
 
 #endif // PERSONAJE_H

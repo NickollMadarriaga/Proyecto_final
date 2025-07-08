@@ -1,6 +1,7 @@
 // mainwindow.cpp
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include <QKeyEvent>
 #include <QMediaPlaylist>
 #include <QPixmap>
 #include <QBitmap>
@@ -173,10 +174,12 @@ void MainWindow::Nivel1()
     scene->addItem(fondo);
 
     agregarBotonVolver();
-    goku = new Personaje(":/Imagenes/GokuSpriteLvl1.png", 63, 69, 4, 1, Personaje::Permanente);
+    goku = new Personaje(":/Imagenes/GokuSpriteLvl1.png", 63, 69, 4, 1, Personaje::PorEvento);
     scene->addItem(goku);
     goku->setPos(400, 300);
     goku->setScale(3);
+
+    controlesActivos = false;
 
     goku->iniciarAnimacionEvento();
 }
@@ -195,10 +198,12 @@ void MainWindow::Nivel2()
 
     agregarBotonVolver();
 
-    goku = new Personaje(":/Imagenes/GokuSprite.png", 35, 44, 4, 2, Personaje::Permanente);
+    goku = new Personaje(":/Imagenes/GokuSprite.png", 61, 62, 3, 4, Personaje::Permanente);
     scene->addItem(goku);
     goku->setPos(400, 300);
     goku->setScale(3);
+
+    controlesActivos = true;
 
 }
 
@@ -216,11 +221,47 @@ void MainWindow::Nivel3()
 
     agregarBotonVolver();
 
-    goku = new Personaje(":/Imagenes/GokuSprite.png", 35, 44, 4, 2, Personaje::Permanente);
+    goku = new Personaje(":/Imagenes/GokuSprite.png", 61, 62, 3, 4, Personaje::Permanente);
     scene->addItem(goku);
     goku->setPos(400, 300);
     goku->setScale(3);
+
+    controlesActivos = true;
+
 }
+
+#include <QKeyEvent>
+
+void MainWindow::keyPressEvent(QKeyEvent *event)
+{
+    if (!controlesActivos || !goku) return;
+
+    switch (event->key()) {
+    case Qt::Key_W:
+        goku->moverseArriba();
+        break;
+    case Qt::Key_S:
+        goku->moverseAbajo();
+        break;
+    case Qt::Key_A:
+        goku->moverseIzquierda();
+        break;
+    case Qt::Key_D:
+        goku->moverseDerecha();
+        break;
+    }
+}
+
+void MainWindow::keyReleaseEvent(QKeyEvent *event)
+{
+    if (!controlesActivos || !goku) return;
+
+    if (event->key() == Qt::Key_A || event->key() == Qt::Key_D) {
+        goku->detenerMovimiento();
+    }
+}
+
+
 
 MainWindow::~MainWindow()
 {

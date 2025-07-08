@@ -25,6 +25,11 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+protected:
+    void keyPressEvent(QKeyEvent *event) override;
+    void keyReleaseEvent(QKeyEvent *event) override;
+
+
 private slots:
     void Inicio();
     void Nivel1();
@@ -55,6 +60,10 @@ private:
     void agregarBotonVolver();
     // De la clase propia 'personaje' creamos al maravilloso goku
     Personaje *goku;
+
+    bool teclaA_presionada = false;
+    bool teclaD_presionada = false;
+    bool controlesActivos = false;
 
 };
 
