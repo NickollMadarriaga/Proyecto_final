@@ -1,30 +1,33 @@
 #ifndef BALA_H
 #define BALA_H
 
-#include <QGraphicsPixmapItem>
-#include <QPointF>
-#include <QTimer>
 #include <QObject>
+#include <QGraphicsPixmapItem>
+#include <QTimer>
+
+class Saibaman;  // Forward declaration
 
 class Bala : public QObject, public QGraphicsPixmapItem
 {
     Q_OBJECT
 
 public:
-    Bala(QPointF origen, double angulo, double velocidad, QGraphicsItem *parent = nullptr);
-
-signals:
-    void balaDestruida();  // Se emite cuando la bala debe eliminarse
+    explicit Bala(QPointF origen, double anguloGrados, double velocidadInicial, QGraphicsItem *parent = nullptr);
 
 private slots:
     void actualizarPosicion();
 
 private:
     QTimer *timer;
-    QPointF origenInicial;
     double velocidad;
     double angulo;
     double tiempo;
+    QPointF origenInicial;
+
+signals:
+    void balaDestruida();
+    void balaColisionoSaibaman(Saibaman* saibaman);
+    void balaPerdida();
 };
 
 #endif // BALA_H

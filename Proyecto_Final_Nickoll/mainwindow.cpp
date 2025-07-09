@@ -13,13 +13,15 @@
 class HoverIconEventFilter : public QObject
 {
     QPixmap normal, hover;
-    QPushButton *boton;
+    QPointer<QPushButton> boton;  // Usar QPointer para detectar eliminación
 public:
     HoverIconEventFilter(QPixmap normalImg, QPixmap hoverImg, QPushButton *btn)
         : QObject(btn), normal(normalImg), hover(hoverImg), boton(btn) {}
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override {
+        if (!boton) return false;  // Verificar que el botón exista
+
         if (event->type() == QEvent::Enter) {
             boton->setIcon(QIcon(hover));
         } else if (event->type() == QEvent::Leave) {
@@ -34,15 +36,30 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
     this->resize(1200, 675);
+
+    // Inicializar punteros a nullptr
+    videoPlayer = nullptr;
+    audioPlayer = nullptr;
+    videoWidget = nullptr;
+    vista = nullptr;
+    scene = nullptr;
+    goku = nullptr;
+    saibaman = nullptr;
+    lineaParabola = nullptr;
+    timerParabola = nullptr;
+    indicadorVida = nullptr;
+
     Inicio();
 }
 
 void MainWindow::Inicio()
 {
+    // Limpiar cualquier estado previo
+    limpiarTodo();
+    juegoReiniciado = false;
     QMediaPlaylist *videoPlaylist = new QMediaPlaylist(this);
     videoPlaylist->addMedia(QUrl("qrc:/Videos/inicio.mp4"));
     videoPlaylist->setPlaybackMode(QMediaPlaylist::Loop);
-
     videoPlayer = new QMediaPlayer(this);
     videoPlayer->setPlaylist(videoPlaylist);
     videoPlayer->setVolume(0);
@@ -103,12 +120,14 @@ void MainWindow::Inicio()
 
 void MainWindow::limpiarMenu()
 {
+    // Limpiar botones del menú
     for (QPushButton *btn : menuButtons) {
         btn->hide();
         btn->deleteLater();
     }
     menuButtons.clear();
 
+    // Limpiar reproductores de media
     if (videoPlayer) {
         videoPlayer->stop();
         videoPlayer->deleteLater();
@@ -126,12 +145,88 @@ void MainWindow::limpiarMenu()
     }
 }
 
+void MainWindow::limpiarTodo()
+{
+    // Detener y limpiar timer PRIMERO
+    if (timerParabola) {
+        timerParabola->stop();
+        timerParabola->deleteLater();
+        timerParabola = nullptr;
+    }
+
+    // Limpiar objetos del juego ANTES de limpiar la escena
+    if (scene) {
+        // Desconectar todas las señales antes de eliminar objetos
+        disconnect(this, nullptr, nullptr, nullptr);
+
+        // Limpiar saibaman
+        if (saibaman) {
+            if (saibaman->scene()) {
+                scene->removeItem(saibaman);
+            }
+            saibaman->deleteLater();
+            saibaman = nullptr;
+        }
+
+        // Limpiar goku
+        if (goku) {
+            if (goku->scene()) {
+                scene->removeItem(goku);
+            }
+            goku->deleteLater();
+            goku = nullptr;
+        }
+
+        // Limpiar indicador de vida
+        if (indicadorVida) {
+            if (indicadorVida->scene()) {
+                scene->removeItem(indicadorVida);
+            }
+            indicadorVida->deleteLater();
+            indicadorVida = nullptr;
+        }
+
+        // Limpiar línea de parábola
+        if (lineaParabola) {
+            if (lineaParabola->scene()) {
+                scene->removeItem(lineaParabola);
+            }
+            delete lineaParabola;  // Usar delete normal
+            lineaParabola = nullptr;
+        }
+
+        // Limpiar la escena completa DESPUÉS de remover todos los items
+        scene->clear();
+        scene->deleteLater();
+        scene = nullptr;
+    }
+
+    // Limpiar vista DESPUÉS de limpiar la escena
+    if (vista) {
+        vista->setScene(nullptr);
+        vista->hide();
+        vista->deleteLater();
+        vista = nullptr;
+    }
+
+    // Limpiar botones del menú
+    limpiarMenu();
+
+    // Resetear variables de control
+    controlesActivos = false;
+    teclasPresionadas.clear();
+    contadorEspacio = 0;
+    anguloFijado = false;
+    velocidadFijada = false;
+    aumentandoAngulo = true;
+    aumentandoVelocidad = true;
+    permitirMovimientoVertical = false;
+}
+
 void MainWindow::agregarBotonVolver()
 {
     addTransparentButton(":/Imagenes/Volver.png", ":/Imagenes/VolverM.png", QPoint(1115, 22), [this]() {
-        vista->setScene(nullptr);
-        delete vista;
-        vista = nullptr;
+        limpiarTodo();
         Inicio();
     });
 }
@@ -156,6 +251,11 @@ void MainWindow::Nivel1()
     scene->addItem(goku);
     goku->setPos(10, 100);
     goku->setScale(3);
+
+    // AGREGAR SAIBAMAN
+    saibaman = new Saibaman();
+    scene->addItem(saibaman);
+    saibaman->setScale(3);
 
     controlesActivos = false;
     contadorEspacio = 0;
@@ -185,6 +285,18 @@ void MainWindow::Nivel1()
     indicadorVida->setVida(vida);
 }
 
+void MainWindow::crearNuevoSaibaman()
+{
+    if (saibaman && scene) {
+        scene->removeItem(saibaman);
+        saibaman->deleteLater();
+    }
+
+    saibaman = new Saibaman();
+    scene->addItem(saibaman);
+    saibaman->setScale(3);
+}
+
 void MainWindow::actualizarParabola()
 {
     if (!anguloFijado) {
@@ -197,7 +309,7 @@ void MainWindow::actualizarParabola()
         velocidad += aumentandoVelocidad ? 2.0 : -2.0;
     }
 
-    if (lineaParabola) {
+    if (lineaParabola && scene) {
         scene->removeItem(lineaParabola);
         delete lineaParabola;
         lineaParabola = nullptr;
@@ -228,28 +340,92 @@ void MainWindow::actualizarParabola()
 
 void MainWindow::manejarFinAnimacionEvento()
 {
+    if (juegoReiniciado) {
+        qDebug() << "Evento cancelado porque el juego fue reiniciado.";
+        return;
+    }
+
+    // Verificar que todos los objetos necesarios existan
+    if (!scene || !goku || !saibaman) {
+        qDebug() << "Objetos no disponibles. Cancelando creación de bala.";
+        return;
+    }
+
+    // Verificar que los objetos estén en la escena
+    if (goku->scene() != scene || saibaman->scene() != scene) {
+        qDebug() << "Objetos no están en la escena actual. Cancelando.";
+        return;
+    }
+
     if (lineaParabola) lineaParabola->hide();
 
     QPointF origen(148, 153);
     Bala *bala = new Bala(origen, anguloBala, velocidadBala);
+    if (!bala) {
+        qDebug() << "No se pudo crear la bala.";
+        return;
+    }
+
     scene->addItem(bala);
 
-    connect(bala, &Bala::balaDestruida, this, [this]() {
-        // Resetear el personaje al primer frame
-        if (goku) {
-            goku->resetearAlPrimerFrame();
+    // Usar QPointer para detectar si los objetos son eliminados
+    QPointer<MainWindow> thisPtr(this);
+    QPointer<QGraphicsScene> scenePtr(scene);
+
+    connect(bala, QOverload<Saibaman*>::of(&Bala::balaColisionoSaibaman), this,
+            [this, thisPtr, scenePtr](Saibaman* saibaman) {
+                if (!thisPtr || !scenePtr) return;  // Verificar que los objetos existan
+
+                if (saibaman && saibaman->scene() == scenePtr) {
+                    scenePtr->removeItem(saibaman);
+                    saibaman->deleteLater();
+                }
+                crearNuevoSaibaman();
+                resetearEstadoJuego();
+            });
+
+    connect(bala, &Bala::balaPerdida, this, [this, thisPtr]() {
+        if (!thisPtr) return;  // Verificar que MainWindow exista
+
+        vida--;
+        if (indicadorVida) {
+            indicadorVida->setVida(vida);
         }
 
-        angulo = 10.0;
-        velocidad = 70.0;
-        anguloFijado = false;
-        velocidadFijada = false;
-        aumentandoAngulo = true;
-        aumentandoVelocidad = true;
-        if (lineaParabola) lineaParabola->show();
-        if (timerParabola) timerParabola->start(100);
-        contadorEspacio = 0;
+        if (vida <= 0) {
+            vida = 3;
+            juegoReiniciado = true;
+            QTimer::singleShot(0, this, [this]() {
+                limpiarTodo();
+                Inicio();
+            });
+            return;
+        }
+
+        resetearEstadoJuego();
     });
+
+    connect(bala, &Bala::balaDestruida, this, [this, thisPtr]() {
+        if (!thisPtr) return;  // Verificar que MainWindow exista
+        resetearEstadoJuego();
+    });
+}
+
+void MainWindow::resetearEstadoJuego()
+{
+    if (goku) {
+        goku->resetearAlPrimerFrame();
+    }
+
+    angulo = 10.0;
+    velocidad = 70.0;
+    anguloFijado = false;
+    velocidadFijada = false;
+    aumentandoAngulo = true;
+    aumentandoVelocidad = true;
+    if (lineaParabola) lineaParabola->show();
+    if (timerParabola) timerParabola->start(100);
+    contadorEspacio = 0;
 }
 
 void MainWindow::Nivel2()
@@ -258,7 +434,7 @@ void MainWindow::Nivel2()
     vista->setGeometry(0, 0, 1200, 675);
     vista->show();
 
-    QGraphicsScene *scene = new QGraphicsScene(this);
+    scene = new QGraphicsScene(this);
     vista->setScene(scene);
 
     vista->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -291,7 +467,7 @@ void MainWindow::Nivel3()
     vista->setGeometry(0, 0, 1200, 675);
     vista->show();
 
-    QGraphicsScene *scene = new QGraphicsScene(this);
+    scene = new QGraphicsScene(this);
     vista->setScene(scene);
 
     vista->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -336,9 +512,14 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
                 if (timerParabola) timerParabola->stop();
                 if (lineaParabola) lineaParabola->hide();
                 goku->iniciarAnimacionEvento();
-                //linea usada para calibrar de donde salia el disparo y la parabola
-                //goku->setModoAnimacion(Personaje::Permanente);
-                QTimer::singleShot(1000, this, &MainWindow::manejarFinAnimacionEvento);
+
+                // Usar QPointer para verificar que MainWindow exista cuando se ejecute
+                QPointer<MainWindow> thisPtr(this);
+                QTimer::singleShot(1000, this, [this, thisPtr]() {
+                    if (thisPtr) {  // Verificar que MainWindow aún exista
+                        manejarFinAnimacionEvento();
+                    }
+                });
             }
             return;
         }
@@ -395,8 +576,16 @@ void MainWindow::addTransparentButton(const QString &imagenNormal, const QString
     boton->show();
 }
 
-
 MainWindow::~MainWindow()
 {
+    // Detener cualquier timer activo ANTES de limpiar
+    if (timerParabola) {
+        timerParabola->stop();
+    }
+
+    // Desconectar todas las señales
+    disconnect(this, nullptr, nullptr, nullptr);
+
+    limpiarTodo();
     delete ui;
 }

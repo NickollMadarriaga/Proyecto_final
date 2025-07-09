@@ -8,13 +8,15 @@ SOURCES += \
     indicadorvida.cpp \
     main.cpp \
     mainwindow.cpp \
-    personaje.cpp
+    personaje.cpp \
+    saibaman.cpp
 
 HEADERS += \
     bala.h \
     indicadorvida.h \
     mainwindow.h \
-    personaje.h
+    personaje.h \
+    saibaman.h
 
 FORMS += \
     mainwindow.ui

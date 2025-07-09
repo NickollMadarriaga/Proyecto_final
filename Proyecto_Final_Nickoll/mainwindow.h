@@ -2,14 +2,19 @@
 #define MAINWINDOW_H
 
 #include "personaje.h"
+#include <QPointer>
 #include "indicadorvida.h"
+#include "saibaman.h"
 #include <QMainWindow>
 #include <QGraphicsView>
 #include <QGraphicsScene>
+#include <QGraphicsPathItem>
 #include <QPushButton>
 #include <QMediaPlayer>
 #include <QVideoWidget>
 #include <QList>
+#include <QSet>
+#include <QTimer>
 #include <functional>
 
 QT_BEGIN_NAMESPACE
@@ -30,7 +35,6 @@ protected:
     void keyPressEvent(QKeyEvent *event) override;
     void keyReleaseEvent(QKeyEvent *event) override;
 
-
 private slots:
     void Inicio();
     void Nivel1();
@@ -39,10 +43,12 @@ private slots:
     void limpiarMenu();
     void actualizarParabola();
     void manejarFinAnimacionEvento();
+    void crearNuevoSaibaman();
 
 private:
     Ui::MainWindow *ui;
 
+    // Vista y escena del juego
     QGraphicsView *vista = nullptr;
     QGraphicsScene *scene = nullptr;
 
@@ -54,22 +60,26 @@ private:
     // Botones del menú
     QList<QPushButton*> menuButtons;
 
-    // Botón genérico con efecto de brillo
+    // Funciones para botones
     void addTransparentButton(const QString &imagenNormal,
                               const QString &imagenHover,
                               const QPoint &posicion,
                               std::function<void()> onClick);
-
-    // Botón para volver desde un nivel al menú
     void agregarBotonVolver();
-    // De la clase propia 'personaje' creamos al maravilloso goku
-    Personaje *goku;
-    QSet<int> teclasPresionadas;
 
+    // Función para limpiar todo
+    void limpiarTodo();
+
+    // Personajes del juego
+    Personaje *goku = nullptr;
+    Saibaman *saibaman = nullptr;
+
+    // Control de teclas
+    QSet<int> teclasPresionadas;
     bool controlesActivos = false;
     bool permitirMovimientoVertical = true;
 
-    // Pal nivel 1
+    // Variables para el nivel 1 (sistema de parábola)
     int contadorEspacio = 0;
     QGraphicsPathItem *lineaParabola = nullptr;
     QTimer *timerParabola = nullptr;
@@ -77,15 +87,18 @@ private:
     double velocidad = 70.0;
     bool anguloFijado = false;
     bool velocidadFijada = false;
-    bool subiendoAngulo = true;
-    bool subiendoVelocidad = true;
     bool aumentandoAngulo = true;
     bool aumentandoVelocidad = true;
     double anguloBala = 0.0;
     double velocidadBala = 0.0;
 
-    IndicadorVida *indicadorVida;
-    int vida;
+    // Sistema de vida
+    IndicadorVida *indicadorVida = nullptr;
+    int vida = 3;
+
+    // Función para resetear el estado del juego
+    void resetearEstadoJuego();
+    bool juegoReiniciado = false;
 
 };
 
