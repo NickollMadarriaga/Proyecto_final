@@ -2,6 +2,7 @@
 #include "ui_mainwindow.h"
 #include "bala.h"
 #include "indicadorvida.h"
+#include "basura.h"
 #include <QKeyEvent>
 #include <QMediaPlaylist>
 #include <QPixmap>
@@ -66,12 +67,12 @@ protected:
 };
 
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent), ui(new Ui::MainWindow), vida(3), puntuacion(0), puntuacionTotal(0), tiempoRestante(60)
+    : QMainWindow(parent), ui(new Ui::MainWindow), vida(3), puntuacion(0),
+    puntuacionTotal(0), tiempoRestante(60), puntuacionNivel1Ganada(0), puntuacionNivel2Ganada(0)
 {
     ui->setupUi(this);
     this->resize(1200, 675);
 
-    // Cargar fuente personalizada
     cargarFuentePersonalizada();
 
     // Inicializar punteros a nullptr
@@ -86,12 +87,18 @@ MainWindow::MainWindow(QWidget *parent)
     timerParabola = nullptr;
     indicadorVida = nullptr;
     timerCronometro = nullptr;
+    timerGenerarBasura = nullptr;
+    timerColisiones = nullptr;
 
     // Inicializar nuevos elementos UI
     imagenRadar = nullptr;
     textoCronometro = nullptr;
     imagenPuntaje = nullptr;
     textoPuntaje = nullptr;
+    timerGenerarBasura4 = nullptr;
+
+    imagenEsferas = nullptr;
+    textoEsferas = nullptr;
 
     Inicio();
 }
@@ -115,9 +122,24 @@ void MainWindow::cargarFuentePersonalizada()
     }
 }
 
-void MainWindow::crearElementosUI()
+void MainWindow::crearElementosUI(int nivel)
 {
     if (!scene) return;
+
+    if (nivel == 2) {
+        imagenEsferas = new QGraphicsPixmapItem(QPixmap(":/Imagenes/esfera.png"));
+        imagenEsferas->setPos(710, 13);
+        imagenEsferas->setScale(1.0);
+        scene->addItem(imagenEsferas);
+
+        // Crear texto de las esferas
+        textoEsferas = new QGraphicsTextItem();
+        textoEsferas->setFont(fuentePersonalizada);
+        textoEsferas->setDefaultTextColor(Qt::white);
+        textoEsferas->setPos(760, 22);
+        scene->addItem(textoEsferas);
+        actualizarTextoEsferas();
+    }
 
     // Crear imagen del radar (cronómetro)
     imagenRadar = new QGraphicsPixmapItem(QPixmap(":/Imagenes/radar.png"));
@@ -143,9 +165,10 @@ void MainWindow::crearElementosUI()
     textoPuntaje = new QGraphicsTextItem();
     textoPuntaje->setFont(fuentePersonalizada);
     textoPuntaje->setDefaultTextColor(Qt::white);
-    textoPuntaje->setPos(975, 22); // Posición a la derecha del icono de puntaje
+    textoPuntaje->setPos(975, 22);
     scene->addItem(textoPuntaje);
     actualizarTextoPuntaje();
+
 }
 
 void MainWindow::limpiarElementosUI()
@@ -183,6 +206,21 @@ void MainWindow::limpiarElementosUI()
         textoPuntaje->deleteLater();
         textoPuntaje = nullptr;
     }
+    if (imagenEsferas) {
+        if (imagenEsferas->scene()) {
+            scene->removeItem(imagenEsferas);
+        }
+        delete imagenEsferas;
+        imagenEsferas = nullptr;
+    }
+
+    if (textoEsferas) {
+        if (textoEsferas->scene()) {
+            scene->removeItem(textoEsferas);
+        }
+        textoEsferas->deleteLater();
+        textoEsferas = nullptr;
+    }
 }
 
 void MainWindow::actualizarTextoCronometro()
@@ -199,8 +237,15 @@ void MainWindow::actualizarTextoPuntaje()
         QString puntaje = QString::number(puntuacion);
         textoPuntaje->setPlainText(puntaje);
     }
-} 
+}
 
+void MainWindow::actualizarTextoEsferas()
+{
+    if (textoEsferas) {
+        QString esfera = QString::number(esferas);
+        textoEsferas->setPlainText(esfera);
+    }
+}
 
 void MainWindow::Inicio()
 {
@@ -297,6 +342,15 @@ void MainWindow::limpiarTodo()
         timerCronometro = nullptr;
     }
 
+    // AGREGAR: Limpiar timer de basura4
+    if (timerGenerarBasura4) {
+        timerGenerarBasura4->stop();
+        timerGenerarBasura4->deleteLater();
+        timerGenerarBasura4 = nullptr;
+    }
+
+    limpiarBasura();
+
     // Limpiar objetos del juego ANTES de limpiar la escena
     if (scene) {
         // Desconectar todas las señales antes de eliminar objetos
@@ -381,7 +435,11 @@ void MainWindow::Nivel1()
 {
     // Inicializar valores del nivel 1
     puntuacion = 0;
+    puntuacionNivel1Ganada = 0;
+    puntuacionNivel2Ganada = 0;
     tiempoRestante = 60;
+    nivelMaximoDesbloqueado = 1;
+
 
     vista = new QGraphicsView(this);
     vista->setGeometry(0, 0, 1200, 675);
@@ -397,7 +455,7 @@ void MainWindow::Nivel1()
     scene->addItem(fondo);
 
     // Crear elementos de UI (cronómetro y puntaje)
-    crearElementosUI();
+    crearElementosUI(1);
 
     agregarBotonVolver();
     goku = new Personaje(":/Imagenes/GokuSpriteLvl1.png", 63, 69, 4, 1, Personaje::PorEvento);
@@ -446,31 +504,64 @@ void MainWindow::Nivel1()
 void MainWindow::actualizarCronometro()
 {
     tiempoRestante--;
-    actualizarTextoCronometro(); // Actualizar el texto visual
+    actualizarTextoCronometro();
 
     if (tiempoRestante <= 0) {
-        // Tiempo terminado
         if (timerCronometro) {
             timerCronometro->stop();
         }
 
-        // Verificar si ganó el nivel (puntuación >= 10)
+        // Verificar si ganó el nivel
         if (puntuacion >= 10) {
-            puntuacionTotal = puntuacion; // Guardar puntuación para nivel 2
-            qDebug() << "¡Nivel completado! Puntuación:" << puntuacion;
+            // Determinar qué nivel se completó y guardar puntuación
+            if (permitirMovimientoVertical) {
+                // Nivel 3 completado
+                puntuacionTotal = puntuacion;
+                qDebug() << "¡Nivel 3 completado! Puntuación:" << puntuacion;
+                nivelMaximoDesbloqueado = 1;
+                puntuacion = 0;
+            } else if (controlesActivos) {
+                if(esferas >= 5){
+                    // Nivel 2 completado
+                    puntuacionNivel2Ganada = puntuacion;
 
-            // DESBLOQUEAR NIVEL 2 al ganar el nivel 1
-            if (nivelMaximoDesbloqueado < 2) {
-                nivelMaximoDesbloqueado = 2;
-                qDebug() << "¡Nivel 2 desbloqueado!";
+                    // DESBLOQUEAR NIVEL 3 SOLO CUANDO SE GANE EL NIVEL 2
+                    if (nivelMaximoDesbloqueado < 3) {
+                        nivelMaximoDesbloqueado = 3;
+                        qDebug() << "¡Nivel 3 desbloqueado!";
+                    }
+
+                    qDebug() << "¡Nivel 2 completado! Puntuación:" << puntuacion;
+                }
+                else {
+                    qDebug() << "¡Nivel 2 fallido!";
+                    esferas=0;
+                }
+            } else {
+                // Nivel 1 completado
+                puntuacionNivel1Ganada = puntuacion;
+                puntuacionTotal = puntuacion;
+                if (nivelMaximoDesbloqueado < 2) {
+                    nivelMaximoDesbloqueado = 2;
+                    qDebug() << "¡Nivel 2 desbloqueado!";
+                }
             }
-
         } else {
-            puntuacion = 0; // Reiniciar puntuación si no alcanzó el mínimo
+            // No alcanzó el mínimo, restaurar puntuación según el nivel
+            if (permitirMovimientoVertical) {
+                // Nivel 3: restaurar puntuación del nivel 2
+                puntuacion = puntuacionNivel2Ganada;
+            } else if (controlesActivos) {
+                // Nivel 2: restaurar puntuación del nivel 1
+                puntuacion = puntuacionNivel1Ganada;
+                qDebug() << "Nivel 2 no completado. Puntuación insuficiente.";
+            } else {
+                // Nivel 1: puntuación a 0
+                puntuacion = 0;
+            }
             qDebug() << "Tiempo terminado. Puntuación insuficiente.";
         }
 
-        // Volver al menú principal
         vida = 3;
         juegoReiniciado = true;
         QTimer::singleShot(0, this, [this]() {
@@ -598,6 +689,14 @@ void MainWindow::manejarFinAnimacionEvento()
         if (!thisPtr) return;  // Verificar que MainWindow exista
 
         vida--;
+        if((puntuacion-5) < 0){
+            puntuacion = 0;
+            actualizarTextoPuntaje();
+        }
+        else{
+            puntuacion -= 5;
+            actualizarTextoPuntaje();
+        }
         if (indicadorVida) {
             indicadorVida->setVida(vida);
         }
@@ -646,14 +745,13 @@ void MainWindow::resetearEstadoJuego()
 
 void MainWindow::Nivel2()
 {
-    // DESBLOQUEAR NIVEL 3 al entrar al nivel 2
-    if (nivelMaximoDesbloqueado < 3) {
-        nivelMaximoDesbloqueado = 3;
-        qDebug() << "¡Nivel 3 desbloqueado!";
-    }
 
-    // Inicializar puntuación del nivel 2 con la puntuación guardada del nivel 1
-    puntuacion = puntuacionTotal;
+    // Usar puntuación guardada del nivel 1
+    puntuacion = puntuacionNivel1Ganada;
+    esferas = 0;
+    nivelMaximoDesbloqueado = 2;
+    tiempoRestante = 60;
+
 
     vista = new QGraphicsView(this);
     vista->setGeometry(0, 0, 1200, 675);
@@ -668,6 +766,9 @@ void MainWindow::Nivel2()
 
     QGraphicsPixmapItem *fondo = new QGraphicsPixmapItem(QPixmap(":/Imagenes/FondoNivel2.png"));
     scene->addItem(fondo);
+
+    // Crear elementos de UI
+    crearElementosUI(2);
 
     agregarBotonVolver();
 
@@ -684,11 +785,22 @@ void MainWindow::Nivel2()
     indicadorVida->setPos(0, 529);
     indicadorVida->setScale(1.5);
     indicadorVida->setVida(vida);
+
+    // Inicializar cronómetro
+    timerCronometro = new QTimer(this);
+    connect(timerCronometro, &QTimer::timeout, this, &MainWindow::actualizarCronometro);
+    timerCronometro->start(1000);
+
+    // Iniciar generación de basura vertical
+    iniciarGeneracionBasura(Basura::Vertical);
 }
 
 void MainWindow::Nivel3()
 {
-    puntuacion = puntuacionTotal;
+    // Usar puntuación guardada del nivel 2
+    puntuacion = puntuacionNivel2Ganada;
+    tiempoRestante = 60;
+
 
     vista = new QGraphicsView(this);
     vista->setGeometry(0, 0, 1200, 675);
@@ -703,6 +815,9 @@ void MainWindow::Nivel3()
 
     QGraphicsPixmapItem *fondo = new QGraphicsPixmapItem(QPixmap(":/Imagenes/FondoNivel3.png"));
     scene->addItem(fondo);
+
+    // Crear elementos de UI
+    crearElementosUI(3);
 
     agregarBotonVolver();
 
@@ -719,6 +834,14 @@ void MainWindow::Nivel3()
     indicadorVida->setPos(0, 529);
     indicadorVida->setScale(1.5);
     indicadorVida->setVida(vida);
+
+    // Inicializar cronómetro
+    timerCronometro = new QTimer(this);
+    connect(timerCronometro, &QTimer::timeout, this, &MainWindow::actualizarCronometro);
+    timerCronometro->start(1000);
+
+    // Iniciar generación de basura horizontal
+    iniciarGeneracionBasura(Basura::Horizontal);
 }
 
 void MainWindow::keyPressEvent(QKeyEvent *event)
@@ -857,6 +980,272 @@ void MainWindow::addButtonWithLock(const QString &imgNormal, const QString &imgH
 
     boton->show();
     menuButtons.append(boton);
+}
+
+void MainWindow::iniciarGeneracionBasura(Basura::TipoMovimiento tipo)
+{
+    detenerGeneracionBasura(); // Detener cualquier generación previa
+
+    timerGenerarBasura = new QTimer(this);
+    connect(timerGenerarBasura, &QTimer::timeout, this, &MainWindow::generarBasura);
+    timerGenerarBasura->start(2000); // Generar basura cada 2 segundos
+
+    // Inicializar timer para verificar colisiones
+    timerColisiones = new QTimer(this);
+    connect(timerColisiones, &QTimer::timeout, this, &MainWindow::verificarColisionesPeriodicamente);
+    timerColisiones->start(50); // Verificar cada 50ms
+
+    // Solo para nivel 2, iniciar generación de basura4 centralizada
+    if (tipo == Basura::Vertical) {
+        timerGenerarBasura4 = new QTimer(this);
+        connect(timerGenerarBasura4, &QTimer::timeout, this, &MainWindow::generarBasura4);
+        timerGenerarBasura4->start(3000); // Generar basura4 cada 3 segundos
+    }
+}
+
+void MainWindow::generarBasura4()
+{
+    if (!scene) return;
+
+    // Crear nueva basura4, que estas son realmente esferas q atrapa goku
+    Basura *basura4 = new Basura(Basura::Vertical);
+
+    // Configurar posición inicial aleatoria
+    int xAleatorio = QRandomGenerator::global()->bounded(10, 1141);
+    basura4->setPos(xAleatorio, -50);
+
+    // Configurar como basura4 con movimiento circular
+    basura4->configurarComoBasura4();
+
+    // Agregar a la escena y lista
+    scene->addItem(basura4);
+    listaBasura4.append(basura4);
+
+    // Conectar señal de eliminación
+    connect(basura4, &Basura::basuraEliminada, this,
+            [this, basura4](bool tocadaPorGoku) {
+                eliminarBasura4(basura4, tocadaPorGoku);
+            });
+
+    // Iniciar movimiento
+    basura4->iniciarMovimiento();
+
+    qDebug() << "Basura4 generada con movimiento circular";
+}
+
+void MainWindow::detenerGeneracionBasura()
+{
+    if (timerGenerarBasura) {
+        timerGenerarBasura->stop();
+        timerGenerarBasura->deleteLater();
+        timerGenerarBasura = nullptr;
+    }
+
+    if (timerColisiones) {
+        timerColisiones->stop();
+        timerColisiones->deleteLater();
+        timerColisiones = nullptr;
+    }
+
+    // Detener timer de basura4
+    if (timerGenerarBasura4) {
+        timerGenerarBasura4->stop();
+        timerGenerarBasura4->deleteLater();
+        timerGenerarBasura4 = nullptr;
+    }
+}
+
+void MainWindow::generarBasura()
+{
+    if (!scene) return;
+
+    Basura::TipoMovimiento tipo;
+
+    // Determinar tipo según el nivel actual
+    if (vista && vista->scene() == scene) {
+        if (permitirMovimientoVertical) {
+            tipo = Basura::Horizontal; // Nivel 3
+        } else {
+            tipo = Basura::Vertical;   // Nivel 2
+        }
+    } else {
+        return; // No estamos en un nivel válido
+    }
+
+    Basura *nuevaBasura = new Basura(tipo);
+    scene->addItem(nuevaBasura);
+    listaBasura.append(nuevaBasura);
+
+    // Conectar señal de eliminación
+    connect(nuevaBasura, &Basura::basuraEliminada, this,
+            [this, nuevaBasura](bool tocadaPorGoku) {
+                eliminarBasura(nuevaBasura, tocadaPorGoku);
+            });
+
+    nuevaBasura->iniciarMovimiento();
+}
+
+void MainWindow::manejarNuevaBasura4(Basura* basura4)
+{
+    if (!basura4 || !scene) return;
+
+    // Agregar a la escena
+    scene->addItem(basura4);
+
+    // Agregar a la lista de basuras4
+    listaBasura4.append(basura4);
+
+    // Conectar señal de eliminación
+    connect(basura4, &Basura::basuraEliminada, this,
+            [this, basura4](bool tocadaPorGoku) {
+                eliminarBasura4(basura4, tocadaPorGoku);
+            });
+
+    qDebug() << "Nueva basura4 creada y configurada";
+}
+
+void MainWindow::eliminarBasura4(Basura *basura4, bool tocadaPorGoku)
+{
+    if (!basura4 || !scene) return;
+
+    // Remover de la lista de basuras4
+    listaBasura4.removeAll(basura4);
+
+    if (tocadaPorGoku) {
+        // En lugar de perder vida, Goku gana 4 puntos y 1 esfera
+        puntuacion += 4;
+        esferas += 1;
+        actualizarTextoPuntaje();
+        actualizarTextoEsferas();
+        qDebug() << "¡Basura4 recogida! Puntuación actual:" << puntuacion << "Esferas:" << esferas;
+    } else {
+        // Basura4 salió de límites, pierde 1 punto porque se le fue una esfera
+        puntuacion--;
+        actualizarTextoPuntaje();
+        qDebug() << "Puntuación actual por evitar esfera:" << puntuacion;
+    }
+
+    // Remover de la escena y eliminar
+    if (basura4->scene()) {
+        scene->removeItem(basura4);
+    }
+    basura4->deleteLater();
+}
+
+void MainWindow::eliminarBasura(Basura *basura, bool tocadaPorGoku)
+{
+    if (!basura || !scene) return;
+
+    // Remover de la lista
+    listaBasura.removeAll(basura);
+
+    if (tocadaPorGoku) {
+        // Goku perdió una vida
+        vida--;
+        if((puntuacion-5) < 0){
+            puntuacion = 0;
+            actualizarTextoPuntaje();
+        }
+        else{
+            puntuacion -= 5;
+            actualizarTextoPuntaje();
+        }
+        if (indicadorVida) {
+            indicadorVida->setVida(vida);
+        }
+
+        if (vida <= 0) {
+            // Game Over
+            if (timerCronometro) {
+                timerCronometro->stop();
+            }
+
+            // Restaurar puntuación según el nivel
+            if (permitirMovimientoVertical) {
+                // Nivel 3: restaurar puntuación del nivel 2
+                puntuacion = puntuacionNivel2Ganada;
+            } else {
+                // Nivel 2: restaurar puntuación del nivel 1
+                puntuacion = puntuacionNivel1Ganada;
+            }
+
+            vida = 3;
+            juegoReiniciado = true;
+            QTimer::singleShot(0, this, [this]() {
+                limpiarTodo();
+                Inicio();
+            });
+            return;
+        }
+    } else {
+        // Basura salió de límites, ganar 1 punto
+        puntuacion++;
+        actualizarTextoPuntaje();
+        qDebug() << "Puntuación actual por evitar basura:" << puntuacion;
+    }
+
+    // Remover de la escena y eliminar
+    if (basura->scene()) {
+        scene->removeItem(basura);
+    }
+    basura->deleteLater();
+}
+
+
+
+void MainWindow::verificarColisionesPeriodicamente()
+{
+    if (!scene || !goku) return;
+
+    // Verificar colisiones entre Goku y cada basura normal
+    for (Basura *basura : listaBasura) {
+        if (basura && basura->scene() == scene) {
+            if (goku->collidesWithItem(basura)) {
+                // Colisión detectada
+                eliminarBasura(basura, true);
+                return; // Salir del bucle ya que eliminamos una basura
+            }
+        }
+    }
+
+    // Verificar colisiones entre Goku y cada basura4
+    for (Basura *basura4 : listaBasura4) {
+        if (basura4 && basura4->scene() == scene) {
+            if (goku->collidesWithItem(basura4)) {
+                // Colisión detectada con basura4
+                eliminarBasura4(basura4, true);
+                return; // Salir del bucle ya que eliminamos una basura4
+            }
+        }
+    }
+}
+
+void MainWindow::limpiarBasura()
+{
+    // Detener generación de basura
+    detenerGeneracionBasura();
+
+    // Limpiar todas las basuras normales de la escena
+    for (Basura *basura : listaBasura) {
+        if (basura) {
+            if (basura->scene()) {
+                scene->removeItem(basura);
+            }
+            basura->deleteLater();
+        }
+    }
+    listaBasura.clear();
+
+    // Limpiar todas las basuras4 de la escena
+    for (Basura *basura4 : listaBasura4) {
+        if (basura4) {
+            if (basura4->scene()) {
+                scene->removeItem(basura4);
+            }
+            basura4->deleteLater();
+        }
+    }
+    listaBasura4.clear();
 }
 
 MainWindow::~MainWindow()

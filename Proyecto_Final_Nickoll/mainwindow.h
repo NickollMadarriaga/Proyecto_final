@@ -19,6 +19,8 @@
 #include <QGraphicsTextItem>
 #include <QFontDatabase>
 #include <QFont>
+#include "basura.h"
+#include <QList>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -48,6 +50,9 @@ private slots:
     void manejarFinAnimacionEvento();
     void crearNuevoSaibaman();
     void actualizarCronometro();
+    void verificarColisionesPeriodicamente();
+    void manejarNuevaBasura4(Basura* basura4);
+    void generarBasura4();
 
 private:
     Ui::MainWindow *ui;
@@ -113,7 +118,7 @@ private:
     bool juegoReiniciado = false;
 
     // SISTEMA DE DESBLOQUEO DE NIVELES
-    int nivelMaximoDesbloqueado = 1;  // Cambiar a 2 o 3 para pruebas, volver a 1 para producción
+    int nivelMaximoDesbloqueado = 3;  // Cambiar a 2 o 3 para pruebas, volver a 1 para producción
 
     // Función para crear botones con sistema de bloqueo
     void addButtonWithLock(const QString &imgNormal, const QString &imgHover,
@@ -135,8 +140,36 @@ private:
     // Funciones para actualizar UI
     void actualizarTextoCronometro();
     void actualizarTextoPuntaje();
-    void crearElementosUI();
+    void actualizarTextoEsferas();
+    void crearElementosUI(int nivel);
     void limpiarElementosUI();
+
+    // Variables para sistema de basura
+    QTimer *timerGenerarBasura;
+    QList<Basura*> listaBasura;
+    QList<Basura*> listaBasura4;
+    int puntuacionNivel1Ganada;  // Puntuación guardada del nivel 1
+    int puntuacionNivel2Ganada;  // Puntuación guardada del nivel 2
+
+    // Métodos para sistema de basura
+    void iniciarGeneracionBasura(Basura::TipoMovimiento tipo);
+    void detenerGeneracionBasura();
+    void generarBasura();
+    void eliminarBasura(Basura *basura, bool tocadaPorGoku);
+    void verificarColisionesBasura();
+    void limpiarBasura();
+    void eliminarBasura4(Basura *basura4, bool tocadaPorGoku);
+
+    // Timer para verificar colisiones
+    QTimer *timerColisiones;
+    QTimer *timerGenerarBasura4;
+
+    int esferas = 0; // Contador de esferas
+    QGraphicsPixmapItem *imagenEsferas; // Imagen para el contador de esferas
+    QGraphicsTextItem *textoEsferas;
+
+
+
 };
 
 #endif // MAINWINDOW_H

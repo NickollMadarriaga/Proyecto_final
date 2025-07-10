@@ -13,23 +13,22 @@ public:
     explicit Saibaman(QGraphicsItem *parent = nullptr);
     ~Saibaman();
     void posicionarAleatoriamente();
-    void iniciarAnimacionMuerte();  // Función para animación de muerte
+    void iniciarAnimacionMuerte();
 
 private slots:
     void actualizarAnimacion();
-    void actualizarAnimacionMuerte();  // Slot para animación de muerte
+    void actualizarAnimacionMuerte();
 
 private:
     QPixmap imgSprites;
-    QPixmap imgMuerte;  // Sprite de muerte
+    QPixmap imgMuerte;
     QTimer *timerAnimacion;
-    QTimer *timerMuerte;  // Timer para animación de muerte
+    QTimer *timerMuerte;
     int anchoFotograma;
     int altoFotograma;
     int columnasTotales;
     int contador;
 
-    // Variables para animación de muerte
     int anchoMuerte = 79;
     int altoMuerte = 84;
     int columnasMuerte = 4;
@@ -40,7 +39,7 @@ private:
 
 signals:
     void animacionCompleta();
-    void animacionMuerteCompleta();  // Nueva señal para cuando termine la animación de muerte
+    void animacionMuerteCompleta();
 };
 
 #endif // SAIBAMAN_H

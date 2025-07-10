@@ -13,7 +13,7 @@ Bala::Bala(QPointF origen, double anguloGrados, double velocidadInicial, QGraphi
     // Timer para movimiento
     timer = new QTimer(this);
     connect(timer, &QTimer::timeout, this, &Bala::actualizarPosicion);
-    timer->start(15); // aprox 33 fps
+    timer->start(15);
 }
 
 void Bala::actualizarPosicion()
@@ -44,7 +44,7 @@ void Bala::actualizarPosicion()
     // Si llegó al suelo sin colisionar con Saibaman
     if (nuevaPos.y() >= 680) {
         timer->stop();
-        emit balaPerdida(); // Nueva señal para indicar que se perdió la bala
+        emit balaPerdida();
         emit balaDestruida();
         deleteLater();
     }

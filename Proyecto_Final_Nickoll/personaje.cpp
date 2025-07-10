@@ -64,7 +64,6 @@ void Personaje::iniciarAnimacionEvento()
     }
 }
 
-// Nuevo método para resetear al primer frame
 void Personaje::resetearAlPrimerFrame()
 {
     if (modoAnimacion == PorEvento) {

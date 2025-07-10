@@ -5,6 +5,7 @@ CONFIG += c++17
 
 SOURCES += \
     bala.cpp \
+    basura.cpp \
     indicadorvida.cpp \
     main.cpp \
     mainwindow.cpp \
@@ -13,6 +14,7 @@ SOURCES += \
 
 HEADERS += \
     bala.h \
+    basura.h \
     indicadorvida.h \
     mainwindow.h \
     personaje.h \

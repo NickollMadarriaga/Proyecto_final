@@ -27,7 +27,6 @@ private:
     int vidaActual;
     void actualizarImagen();
 
-    // Rutas de las imágenes
     QString imagenVida3;
     QString imagenVida2;
     QString imagenVida1;

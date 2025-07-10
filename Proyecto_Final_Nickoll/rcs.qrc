@@ -27,5 +27,10 @@
         <file>Imagenes/Puntaje.png</file>
         <file>Fuentes/Saiyan-Sans.ttf</file>
         <file>Imagenes/radar.png</file>
+        <file>Imagenes/basura1.png</file>
+        <file>Imagenes/basura2.png</file>
+        <file>Imagenes/basura3.png</file>
+        <file>Imagenes/basura4.png</file>
+        <file>Imagenes/esfera.png</file>
     </qresource>
 </RCC>
