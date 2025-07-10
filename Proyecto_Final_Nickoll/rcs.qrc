@@ -23,5 +23,9 @@
         <file>Imagenes/VidaCom.png</file>
         <file>Imagenes/VidaFin.png</file>
         <file>Imagenes/AparicionSaibaman.png</file>
+        <file>Imagenes/MuerteSaibaman.png</file>
+        <file>Imagenes/Puntaje.png</file>
+        <file>Fuentes/Saiyan-Sans.ttf</file>
+        <file>Imagenes/radar.png</file>
     </qresource>
 </RCC>

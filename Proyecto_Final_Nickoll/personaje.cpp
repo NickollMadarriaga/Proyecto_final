@@ -16,7 +16,7 @@ Personaje::Personaje(QString rutaSpritesheet,
     contador(0),
     estaEnMovimiento(false),
     modoAnimacion(modo),
-    mantenerUltimoFrame(false)  // Inicializar la nueva variable
+    mantenerUltimoFrame(false)
 {
     imgSprites.load(rutaSpritesheet);
     setPixmap(imgSprites.copy(0, 0, anchoFotograma, altoFotograma));

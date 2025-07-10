@@ -1,21 +1,24 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
-
 #include "personaje.h"
-#include <QPointer>
+#include <QMainWindow>
 #include "indicadorvida.h"
 #include "saibaman.h"
-#include <QMainWindow>
 #include <QGraphicsView>
 #include <QGraphicsScene>
-#include <QGraphicsPathItem>
-#include <QPushButton>
+#include <QGraphicsPixmapItem>
+#include <QKeyEvent>
 #include <QMediaPlayer>
 #include <QVideoWidget>
-#include <QList>
-#include <QSet>
+#include <QMediaPlaylist>
+#include <QPushButton>
 #include <QTimer>
-#include <functional>
+#include <QSet>
+#include <QGraphicsPathItem>
+#include <QPointer>
+#include <QGraphicsTextItem>
+#include <QFontDatabase>
+#include <QFont>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -44,6 +47,7 @@ private slots:
     void actualizarParabola();
     void manejarFinAnimacionEvento();
     void crearNuevoSaibaman();
+    void actualizarCronometro();
 
 private:
     Ui::MainWindow *ui;
@@ -96,10 +100,43 @@ private:
     IndicadorVida *indicadorVida = nullptr;
     int vida = 3;
 
+    // Sistema de puntuación
+    int puntuacion = 0;          // Puntuación actual
+    int puntuacionTotal = 0;    // Puntuación guardada de niveles
+
+    // Sistema de cronómetro
+    QTimer *timerCronometro = nullptr;
+    int tiempoRestante = 60;     // Tiempo en segundos
+
     // Función para resetear el estado del juego
     void resetearEstadoJuego();
     bool juegoReiniciado = false;
 
+    // SISTEMA DE DESBLOQUEO DE NIVELES
+    int nivelMaximoDesbloqueado = 1;  // Cambiar a 2 o 3 para pruebas, volver a 1 para producción
+
+    // Función para crear botones con sistema de bloqueo
+    void addButtonWithLock(const QString &imgNormal, const QString &imgHover,
+                           const QString &imgBlocked, const QPoint &pos,
+                           int nivelRequerido, std::function<void()> cb);
+
+    // Fuente personalizada
+    QFont fuentePersonalizada;
+    void cargarFuentePersonalizada();
+
+    // Elementos visuales del cronómetro
+    QGraphicsPixmapItem *imagenRadar = nullptr;
+    QGraphicsTextItem *textoCronometro = nullptr;
+
+    // Elementos visuales del puntaje
+    QGraphicsPixmapItem *imagenPuntaje = nullptr;
+    QGraphicsTextItem *textoPuntaje = nullptr;
+
+    // Funciones para actualizar UI
+    void actualizarTextoCronometro();
+    void actualizarTextoPuntaje();
+    void crearElementosUI();
+    void limpiarElementosUI();
 };
 
 #endif // MAINWINDOW_H

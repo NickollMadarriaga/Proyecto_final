@@ -31,11 +31,48 @@ protected:
     }
 };
 
+class HoverIconEventFilterWithLock : public QObject
+{
+    QPixmap normal, hover, blocked;
+    QPointer<QPushButton> boton;
+    bool isBlocked;
+
+public:
+    HoverIconEventFilterWithLock(QPixmap normalImg, QPixmap hoverImg, QPixmap blockedImg, QPushButton *btn, bool blocked)
+        : QObject(btn), normal(normalImg), hover(hoverImg), blocked(blockedImg), boton(btn), isBlocked(blocked) {}
+
+    void setBlocked(bool isButtonBlocked) {
+        isBlocked = isButtonBlocked;
+        if (boton) {
+            if (isBlocked) {
+                boton->setIcon(QIcon(blocked));
+            } else {
+                boton->setIcon(QIcon(normal));
+            }
+        }
+    }
+
+protected:
+    bool eventFilter(QObject *obj, QEvent *event) override {
+        if (!boton || isBlocked) return false;
+
+        if (event->type() == QEvent::Enter) {
+            boton->setIcon(QIcon(hover));
+        } else if (event->type() == QEvent::Leave) {
+            boton->setIcon(QIcon(normal));
+        }
+        return false;
+    }
+};
+
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent), ui(new Ui::MainWindow), vida(3)
+    : QMainWindow(parent), ui(new Ui::MainWindow), vida(3), puntuacion(0), puntuacionTotal(0), tiempoRestante(60)
 {
     ui->setupUi(this);
     this->resize(1200, 675);
+
+    // Cargar fuente personalizada
+    cargarFuentePersonalizada();
 
     // Inicializar punteros a nullptr
     videoPlayer = nullptr;
@@ -48,9 +85,122 @@ MainWindow::MainWindow(QWidget *parent)
     lineaParabola = nullptr;
     timerParabola = nullptr;
     indicadorVida = nullptr;
+    timerCronometro = nullptr;
+
+    // Inicializar nuevos elementos UI
+    imagenRadar = nullptr;
+    textoCronometro = nullptr;
+    imagenPuntaje = nullptr;
+    textoPuntaje = nullptr;
 
     Inicio();
 }
+
+void MainWindow::cargarFuentePersonalizada()
+{
+    // Cargar la fuente desde recursos
+    int fontId = QFontDatabase::addApplicationFont(":/Fuentes/Saiyan-Sans.ttf");
+    if (fontId != -1) {
+        QStringList fontFamilies = QFontDatabase::applicationFontFamilies(fontId);
+        if (!fontFamilies.empty()) {
+            fuentePersonalizada = QFont(fontFamilies.at(0), 24, QFont::Bold);
+            qDebug() << "Fuente personalizada cargada:" << fontFamilies.at(0);
+        } else {
+            qDebug() << "Error: No se pudo obtener la familia de fuentes";
+            fuentePersonalizada = QFont("Arial", 24, QFont::Bold); // Fuente por defecto
+        }
+    } else {
+        qDebug() << "Error: No se pudo cargar la fuente desde recursos";
+        fuentePersonalizada = QFont("Arial", 24, QFont::Bold); // Fuente por defecto
+    }
+}
+
+void MainWindow::crearElementosUI()
+{
+    if (!scene) return;
+
+    // Crear imagen del radar (cronómetro)
+    imagenRadar = new QGraphicsPixmapItem(QPixmap(":/Imagenes/radar.png"));
+    imagenRadar->setPos(825, 22);
+    imagenRadar->setScale(1.0);
+    scene->addItem(imagenRadar);
+
+    // Crear texto del cronómetro
+    textoCronometro = new QGraphicsTextItem();
+    textoCronometro->setFont(fuentePersonalizada);
+    textoCronometro->setDefaultTextColor(Qt::white);
+    textoCronometro->setPos(860, 22); // Posición a la derecha del radar
+    scene->addItem(textoCronometro);
+    actualizarTextoCronometro();
+
+    // Crear imagen del puntaje
+    imagenPuntaje = new QGraphicsPixmapItem(QPixmap(":/Imagenes/Puntaje.png"));
+    imagenPuntaje->setPos(940, 28);
+    imagenPuntaje->setScale(1.0);
+    scene->addItem(imagenPuntaje);
+
+    // Crear texto del puntaje
+    textoPuntaje = new QGraphicsTextItem();
+    textoPuntaje->setFont(fuentePersonalizada);
+    textoPuntaje->setDefaultTextColor(Qt::white);
+    textoPuntaje->setPos(975, 22); // Posición a la derecha del icono de puntaje
+    scene->addItem(textoPuntaje);
+    actualizarTextoPuntaje();
+}
+
+void MainWindow::limpiarElementosUI()
+{
+    // Limpiar elementos del cronómetro
+    if (imagenRadar) {
+        if (imagenRadar->scene()) {
+            scene->removeItem(imagenRadar);
+        }
+        delete imagenRadar;
+        imagenRadar = nullptr;
+    }
+
+    if (textoCronometro) {
+        if (textoCronometro->scene()) {
+            scene->removeItem(textoCronometro);
+        }
+        textoCronometro->deleteLater();
+        textoCronometro = nullptr;
+    }
+
+    // Limpiar elementos del puntaje
+    if (imagenPuntaje) {
+        if (imagenPuntaje->scene()) {
+            scene->removeItem(imagenPuntaje);
+        }
+        delete imagenPuntaje;
+        imagenPuntaje = nullptr;
+    }
+
+    if (textoPuntaje) {
+        if (textoPuntaje->scene()) {
+            scene->removeItem(textoPuntaje);
+        }
+        textoPuntaje->deleteLater();
+        textoPuntaje = nullptr;
+    }
+}
+
+void MainWindow::actualizarTextoCronometro()
+{
+    if (textoCronometro) {
+        QString tiempo = QString::number(tiempoRestante);
+        textoCronometro->setPlainText(tiempo);
+    }
+}
+
+void MainWindow::actualizarTextoPuntaje()
+{
+    if (textoPuntaje) {
+        QString puntaje = QString::number(puntuacion);
+        textoPuntaje->setPlainText(puntaje);
+    }
+} 
+
 
 void MainWindow::Inicio()
 {
@@ -80,39 +230,26 @@ void MainWindow::Inicio()
     audioPlayer->setVolume(100);
     audioPlayer->play();
 
-    auto addBtn = [this](const QString &img, const QString &hover, const QPoint &pos, std::function<void()> cb) {
-        QPixmap pixmapNormal(img), pixmapHover(hover);
-        QPushButton *boton = new QPushButton(this);
+    // Crear botones con sistema de bloqueo
+    addButtonWithLock(":/Imagenes/BotonLvl1.png", ":/Imagenes/BotonLvl1M.png",
+                      "", QPoint(100, 500), 1, [this]() {
+                          limpiarMenu();
+                          Nivel1();
+                      });
 
-        boton->setIcon(QIcon(pixmapNormal));
-        boton->setIconSize(pixmapNormal.size());
-        boton->setFlat(true);
-        boton->setCursor(Qt::PointingHandCursor);
-        boton->setStyleSheet("background-color: transparent;");
-        boton->setGeometry(pos.x(), pos.y(), pixmapNormal.width(), pixmapNormal.height());
-        boton->setMask(pixmapNormal.createMaskFromColor(Qt::transparent, Qt::MaskInColor));
-        boton->installEventFilter(new HoverIconEventFilter(pixmapNormal, pixmapHover, boton));
-        connect(boton, &QPushButton::clicked, this, [cb]() { cb(); });
-        boton->show();
-        menuButtons.append(boton);
-    };
+    addButtonWithLock(":/Imagenes/BotonLvl2.png", ":/Imagenes/BotonLvl2M.png",
+                      ":/Imagenes/BotonLvl2B.png", QPoint(550, 500), 2, [this]() {
+                          limpiarMenu();
+                          Nivel2();
+                      });
 
-    addBtn(":/Imagenes/BotonLvl1.png", ":/Imagenes/BotonLvl1M.png", QPoint(100, 500), [this]() {
-        limpiarMenu();
-        Nivel1();
-    });
+    addButtonWithLock(":/Imagenes/BotonLvl3.png", ":/Imagenes/BotonLvl3M.png",
+                      ":/Imagenes/BotonLvl3B.png", QPoint(1000, 525), 3, [this]() {
+                          limpiarMenu();
+                          Nivel3();
+                      });
 
-    addBtn(":/Imagenes/BotonLvl2.png", ":/Imagenes/BotonLvl2M.png", QPoint(550, 500), [this]() {
-        limpiarMenu();
-        Nivel2();
-    });
-
-    addBtn(":/Imagenes/BotonLvl3.png", ":/Imagenes/BotonLvl3M.png", QPoint(1000, 525), [this]() {
-        limpiarMenu();
-        Nivel3();
-    });
-
-    addBtn(":/Imagenes/Volver.png", ":/Imagenes/VolverM.png", QPoint(1115, 22), []() {
+    addTransparentButton(":/Imagenes/Volver.png", ":/Imagenes/VolverM.png", QPoint(1115, 22), []() {
         qDebug() << "Saliendo del juego...";
         qApp->quit();
     });
@@ -147,17 +284,26 @@ void MainWindow::limpiarMenu()
 
 void MainWindow::limpiarTodo()
 {
-    // Detener y limpiar timer PRIMERO
+    // Detener y limpiar timers PRIMERO
     if (timerParabola) {
         timerParabola->stop();
         timerParabola->deleteLater();
         timerParabola = nullptr;
     }
 
+    if (timerCronometro) {
+        timerCronometro->stop();
+        timerCronometro->deleteLater();
+        timerCronometro = nullptr;
+    }
+
     // Limpiar objetos del juego ANTES de limpiar la escena
     if (scene) {
         // Desconectar todas las señales antes de eliminar objetos
         disconnect(this, nullptr, nullptr, nullptr);
+
+        // Limpiar elementos UI
+        limpiarElementosUI();
 
         // Limpiar saibaman
         if (saibaman) {
@@ -191,7 +337,7 @@ void MainWindow::limpiarTodo()
             if (lineaParabola->scene()) {
                 scene->removeItem(lineaParabola);
             }
-            delete lineaParabola;  // Usar delete normal
+            delete lineaParabola;
             lineaParabola = nullptr;
         }
 
@@ -233,6 +379,10 @@ void MainWindow::agregarBotonVolver()
 
 void MainWindow::Nivel1()
 {
+    // Inicializar valores del nivel 1
+    puntuacion = 0;
+    tiempoRestante = 60;
+
     vista = new QGraphicsView(this);
     vista->setGeometry(0, 0, 1200, 675);
     vista->show();
@@ -245,6 +395,9 @@ void MainWindow::Nivel1()
 
     QGraphicsPixmapItem *fondo = new QGraphicsPixmapItem(QPixmap(":/Imagenes/FondoNivel1.png"));
     scene->addItem(fondo);
+
+    // Crear elementos de UI (cronómetro y puntaje)
+    crearElementosUI();
 
     agregarBotonVolver();
     goku = new Personaje(":/Imagenes/GokuSpriteLvl1.png", 63, 69, 4, 1, Personaje::PorEvento);
@@ -283,6 +436,48 @@ void MainWindow::Nivel1()
     indicadorVida->setPos(0, 529);
     indicadorVida->setScale(1.5);
     indicadorVida->setVida(vida);
+
+    // Inicializar cronómetro
+    timerCronometro = new QTimer(this);
+    connect(timerCronometro, &QTimer::timeout, this, &MainWindow::actualizarCronometro);
+    timerCronometro->start(1000); // 1 segundo
+}
+
+void MainWindow::actualizarCronometro()
+{
+    tiempoRestante--;
+    actualizarTextoCronometro(); // Actualizar el texto visual
+
+    if (tiempoRestante <= 0) {
+        // Tiempo terminado
+        if (timerCronometro) {
+            timerCronometro->stop();
+        }
+
+        // Verificar si ganó el nivel (puntuación >= 10)
+        if (puntuacion >= 10) {
+            puntuacionTotal = puntuacion; // Guardar puntuación para nivel 2
+            qDebug() << "¡Nivel completado! Puntuación:" << puntuacion;
+
+            // DESBLOQUEAR NIVEL 2 al ganar el nivel 1
+            if (nivelMaximoDesbloqueado < 2) {
+                nivelMaximoDesbloqueado = 2;
+                qDebug() << "¡Nivel 2 desbloqueado!";
+            }
+
+        } else {
+            puntuacion = 0; // Reiniciar puntuación si no alcanzó el mínimo
+            qDebug() << "Tiempo terminado. Puntuación insuficiente.";
+        }
+
+        // Volver al menú principal
+        vida = 3;
+        juegoReiniciado = true;
+        QTimer::singleShot(0, this, [this]() {
+            limpiarTodo();
+            Inicio();
+        });
+    }
 }
 
 void MainWindow::crearNuevoSaibaman()
@@ -377,10 +572,25 @@ void MainWindow::manejarFinAnimacionEvento()
                 if (!thisPtr || !scenePtr) return;  // Verificar que los objetos existan
 
                 if (saibaman && saibaman->scene() == scenePtr) {
-                    scenePtr->removeItem(saibaman);
-                    saibaman->deleteLater();
+                    // Iniciar animación de muerte en lugar de eliminar inmediatamente
+                    saibaman->iniciarAnimacionMuerte();
+
+                    // Conectar señal para cuando termine la animación de muerte
+                    connect(saibaman, &Saibaman::animacionMuerteCompleta, this, [this, saibaman]() {
+                        if (scene && saibaman && saibaman->scene() == scene) {
+                            scene->removeItem(saibaman);
+                            saibaman->deleteLater();
+
+                            // Incrementar puntuación
+                            puntuacion += 3;
+                            actualizarTextoPuntaje();
+                            qDebug() << "Puntuación actual:" << puntuacion;
+
+                            // Crear nuevo Saibaman
+                            crearNuevoSaibaman();
+                        }
+                    });
                 }
-                crearNuevoSaibaman();
                 resetearEstadoJuego();
             });
 
@@ -393,6 +603,12 @@ void MainWindow::manejarFinAnimacionEvento()
         }
 
         if (vida <= 0) {
+            if (timerCronometro) {
+                timerCronometro->stop();
+            }
+
+            // Al perder en nivel 1, puntuación se reinicia a 0
+            puntuacion = 0;
             vida = 3;
             juegoReiniciado = true;
             QTimer::singleShot(0, this, [this]() {
@@ -430,6 +646,15 @@ void MainWindow::resetearEstadoJuego()
 
 void MainWindow::Nivel2()
 {
+    // DESBLOQUEAR NIVEL 3 al entrar al nivel 2
+    if (nivelMaximoDesbloqueado < 3) {
+        nivelMaximoDesbloqueado = 3;
+        qDebug() << "¡Nivel 3 desbloqueado!";
+    }
+
+    // Inicializar puntuación del nivel 2 con la puntuación guardada del nivel 1
+    puntuacion = puntuacionTotal;
+
     vista = new QGraphicsView(this);
     vista->setGeometry(0, 0, 1200, 675);
     vista->show();
@@ -463,6 +688,8 @@ void MainWindow::Nivel2()
 
 void MainWindow::Nivel3()
 {
+    puntuacion = puntuacionTotal;
+
     vista = new QGraphicsView(this);
     vista->setGeometry(0, 0, 1200, 675);
     vista->show();
@@ -571,9 +798,65 @@ void MainWindow::addTransparentButton(const QString &imagenNormal, const QString
     boton->setStyleSheet("background-color: transparent;");
     boton->setGeometry(posicion.x(), posicion.y(), pixmapNormal.width(), pixmapNormal.height());
     boton->setMask(pixmapNormal.createMaskFromColor(Qt::transparent, Qt::MaskInColor));
+
+    boton->setFocusPolicy(Qt::NoFocus);
+
     boton->installEventFilter(new HoverIconEventFilter(pixmapNormal, pixmapHover, boton));
     connect(boton, &QPushButton::clicked, this, [onClick]() { onClick(); });
     boton->show();
+}
+
+void MainWindow::addButtonWithLock(const QString &imgNormal, const QString &imgHover,
+                                   const QString &imgBlocked, const QPoint &pos,
+                                   int nivelRequerido, std::function<void()> cb)
+{
+    bool isBlocked = nivelMaximoDesbloqueado < nivelRequerido;
+
+    QPixmap pixmapNormal(imgNormal);
+    QPixmap pixmapHover(imgHover);
+    QPixmap pixmapBlocked;
+
+    if (!imgBlocked.isEmpty()) {
+        pixmapBlocked = QPixmap(imgBlocked);
+    }
+
+    QPushButton *boton = new QPushButton(this);
+
+    // Configurar el botón según si está bloqueado o no
+    if (isBlocked && !imgBlocked.isEmpty()) {
+        boton->setIcon(QIcon(pixmapBlocked));
+        boton->setIconSize(pixmapBlocked.size());
+        boton->setGeometry(pos.x(), pos.y(), pixmapBlocked.width(), pixmapBlocked.height());
+        boton->setMask(pixmapBlocked.createMaskFromColor(Qt::transparent, Qt::MaskInColor));
+    } else {
+        boton->setIcon(QIcon(pixmapNormal));
+        boton->setIconSize(pixmapNormal.size());
+        boton->setGeometry(pos.x(), pos.y(), pixmapNormal.width(), pixmapNormal.height());
+        boton->setMask(pixmapNormal.createMaskFromColor(Qt::transparent, Qt::MaskInColor));
+    }
+
+    boton->setFlat(true);
+    boton->setStyleSheet("background-color: transparent;");
+
+    boton->setFocusPolicy(Qt::NoFocus);
+
+    if (!isBlocked) {
+        boton->setCursor(Qt::PointingHandCursor);
+        if (!imgBlocked.isEmpty()) {
+            boton->installEventFilter(new HoverIconEventFilterWithLock(pixmapNormal, pixmapHover, pixmapBlocked, boton, false));
+        } else {
+            boton->installEventFilter(new HoverIconEventFilter(pixmapNormal, pixmapHover, boton));
+        }
+        connect(boton, &QPushButton::clicked, this, [cb]() { cb(); });
+    } else {
+        boton->setCursor(Qt::ArrowCursor);
+        if (!imgBlocked.isEmpty()) {
+            boton->installEventFilter(new HoverIconEventFilterWithLock(pixmapNormal, pixmapHover, pixmapBlocked, boton, true));
+        }
+    }
+
+    boton->show();
+    menuButtons.append(boton);
 }
 
 MainWindow::~MainWindow()
@@ -581,6 +864,9 @@ MainWindow::~MainWindow()
     // Detener cualquier timer activo ANTES de limpiar
     if (timerParabola) {
         timerParabola->stop();
+    }
+    if (timerCronometro) {
+        timerCronometro->stop();
     }
 
     // Desconectar todas las señales

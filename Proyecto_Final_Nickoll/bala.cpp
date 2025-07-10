@@ -1,5 +1,5 @@
 #include "bala.h"
-#include "saibaman.h"  // Incluir aquí en el .cpp
+#include "saibaman.h"
 #include <QtMath>
 #include <QTimer>
 

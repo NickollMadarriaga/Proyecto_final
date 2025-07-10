@@ -5,7 +5,7 @@
 #include <QGraphicsPixmapItem>
 #include <QTimer>
 
-class Saibaman;  // Forward declaration
+class Saibaman;
 
 class Bala : public QObject, public QGraphicsPixmapItem
 {
