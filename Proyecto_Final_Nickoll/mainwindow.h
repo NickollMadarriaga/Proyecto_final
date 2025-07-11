@@ -21,6 +21,11 @@
 #include <QFont>
 #include "basura.h"
 #include <QList>
+#include <QVBoxLayout>
+#include <QFrame>
+#include <algorithm>
+#include <QDateTime>
+
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -53,6 +58,9 @@ private slots:
     void verificarColisionesPeriodicamente();
     void manejarNuevaBasura4(Basura* basura4);
     void generarBasura4();
+    void moverFondoNivel3();
+    void reproducirAudioNivel(const QString &archivoAudio, bool loop = false);
+    void reproducirSonidoEfecto(const QString &archivoAudio);
 
 private:
     Ui::MainWindow *ui;
@@ -118,7 +126,7 @@ private:
     bool juegoReiniciado = false;
 
     // SISTEMA DE DESBLOQUEO DE NIVELES
-    int nivelMaximoDesbloqueado = 3;  // Cambiar a 2 o 3 para pruebas, volver a 1 para producción
+    int nivelMaximoDesbloqueado = 1;  // Cambiar a 2 o 3 para pruebas, volver a 1 para producción
 
     // Función para crear botones con sistema de bloqueo
     void addButtonWithLock(const QString &imgNormal, const QString &imgHover,
@@ -167,6 +175,48 @@ private:
     int esferas = 0; // Contador de esferas
     QGraphicsPixmapItem *imagenEsferas; // Imagen para el contador de esferas
     QGraphicsTextItem *textoEsferas;
+
+    QGraphicsPixmapItem *fondoNivel3;
+    QTimer *timerFondoNivel3;
+
+    // Variables para físicas de viento (Nivel 3)
+    QTimer *timerFisicasViento;
+    double velocidadViento;        // Velocidad del viento en píxeles/frame
+    double fuerzaViento;          // Fuerza del viento aplicada a Goku
+    double resistenciaAire;       // Resistencia del aire
+    double velocidadGokuX;        // Velocidad horizontal actual de Goku
+    double velocidadGokuY;        // Velocidad vertical actual de Goku
+    double aceleracionViento;     // Aceleración causada por el viento
+    bool vientoActivo;            // Si las físicas de viento están activas
+
+    // Métodos para físicas de viento
+    void iniciarFisicasViento();
+    void detenerFisicasViento();
+    void aplicarFisicasViento();
+    void calcularFuerzaViento();
+    void aplicarResistenciaAire();
+    void actualizarPosicionGoku();
+    void verificarLimitesGoku();
+
+    // Pa los sonidos
+    QMediaPlayer *audioNivel;
+    QMediaPlayer *audioDisparo;
+
+    // Puntuaciones
+    void guardarPuntuacionConFecha(int puntuacion);
+
+    struct EntradaPuntuacion {
+        QDateTime fecha;
+        int puntuacion;
+    };
+
+    QWidget *panelPuntuaciones = nullptr;
+
+    void crearPanelPuntuaciones();
+    void limpiarPanelPuntuaciones();
+    QVector<EntradaPuntuacion> cargarPuntuacionesDesdeArchivo();
+    QVector<EntradaPuntuacion> obtenerUltimasPuntuaciones(const QVector<EntradaPuntuacion> &puntuaciones, int cantidad);
+    QVector<EntradaPuntuacion> obtenerMejoresPuntuaciones(const QVector<EntradaPuntuacion> &puntuaciones, int cantidad);
 
 
 

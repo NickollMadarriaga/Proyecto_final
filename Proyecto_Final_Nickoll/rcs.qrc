@@ -32,5 +32,16 @@
         <file>Imagenes/basura3.png</file>
         <file>Imagenes/basura4.png</file>
         <file>Imagenes/esfera.png</file>
+        <file>Audios/Derrota.mp3</file>
+        <file>Audios/Disparo.mp3</file>
+        <file>Audios/Muerte.mp3</file>
+        <file>Audios/Nivel1.mp3</file>
+        <file>Audios/Nivel2.mp3</file>
+        <file>Audios/Nivel3.mp3</file>
+        <file>Audios/Victoria.mp3</file>
+        <file>Audios/VidaMenos.mp3</file>
+        <file>Imagenes/Derrota.png</file>
+        <file>Imagenes/Victoria.png</file>
+        <file>Imagenes/icono.png</file>
     </qresource>
 </RCC>

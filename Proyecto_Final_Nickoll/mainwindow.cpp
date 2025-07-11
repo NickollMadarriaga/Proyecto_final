@@ -10,6 +10,14 @@
 #include <QApplication>
 #include <QDebug>
 #include <QtMath>
+#include <QFile>
+#include <QTextStream>
+#include <QDateTime>
+#include <QLabel>
+#include <QVBoxLayout>
+#include <QFrame>
+#include <algorithm>
+#include <QVector>
 
 class HoverIconEventFilter : public QObject
 {
@@ -70,6 +78,7 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), ui(new Ui::MainWindow), vida(3), puntuacion(0),
     puntuacionTotal(0), tiempoRestante(60), puntuacionNivel1Ganada(0), puntuacionNivel2Ganada(0)
 {
+
     ui->setupUi(this);
     this->resize(1200, 675);
 
@@ -99,6 +108,22 @@ MainWindow::MainWindow(QWidget *parent)
 
     imagenEsferas = nullptr;
     textoEsferas = nullptr;
+
+    // Inicializar timer y fondo del nivel 3
+    timerFondoNivel3 = nullptr;
+    fondoNivel3 = nullptr;
+
+    audioNivel = nullptr;
+    audioDisparo = nullptr;
+
+    timerFisicasViento = nullptr;
+    velocidadViento = 1.0;        // Velocidad del viento
+    fuerzaViento = 0.0;
+    resistenciaAire = 0.95;       // Factor de resistencia (0.95 = 5% de resistencia)
+    velocidadGokuX = 0.0;
+    velocidadGokuY = 0.0;
+    aceleracionViento = 0.15;     // Aceleración por el viento
+    vientoActivo = false;
 
     Inicio();
 }
@@ -236,6 +261,7 @@ void MainWindow::actualizarTextoPuntaje()
     if (textoPuntaje) {
         QString puntaje = QString::number(puntuacion);
         textoPuntaje->setPlainText(puntaje);
+        reproducirSonidoEfecto("qrc:/Audios/Victoria.mp3");
     }
 }
 
@@ -249,16 +275,21 @@ void MainWindow::actualizarTextoEsferas()
 
 void MainWindow::Inicio()
 {
+    vida = 3;
     // Limpiar cualquier estado previo
     limpiarTodo();
     juegoReiniciado = false;
+
+    // Configurar audio de fondo
+    reproducirAudioNivel("qrc:/Audios/opening.mp3", true);
+
+    // Configurar video de fondo
     QMediaPlaylist *videoPlaylist = new QMediaPlaylist(this);
     videoPlaylist->addMedia(QUrl("qrc:/Videos/inicio.mp4"));
     videoPlaylist->setPlaybackMode(QMediaPlaylist::Loop);
     videoPlayer = new QMediaPlayer(this);
     videoPlayer->setPlaylist(videoPlaylist);
     videoPlayer->setVolume(0);
-
     videoWidget = new QVideoWidget(this);
     videoWidget->setGeometry(0, 0, 1200, 675);
     videoWidget->setStyleSheet("background-color: black;");
@@ -266,14 +297,15 @@ void MainWindow::Inicio()
     videoWidget->show();
     videoPlayer->play();
 
-    QMediaPlaylist *audioPlaylist = new QMediaPlaylist(this);
-    audioPlaylist->addMedia(QUrl("qrc:/Audios/opening.mp3"));
-    audioPlaylist->setPlaybackMode(QMediaPlaylist::Loop);
+    // Crear overlay semi-transparente para los botones
+    QWidget *overlay = new QWidget(this);
+    overlay->setGeometry(0, 490, 1200, 205);
+    overlay->setStyleSheet("background-color: rgba(107, 35, 30, 255);");
+    overlay->setAttribute(Qt::WA_TransparentForMouseEvents);
+    overlay->show();
 
-    audioPlayer = new QMediaPlayer(this);
-    audioPlayer->setPlaylist(audioPlaylist);
-    audioPlayer->setVolume(100);
-    audioPlayer->play();
+    // Crear panel de puntuaciones en la parte izquierda
+    crearPanelPuntuaciones();
 
     // Crear botones con sistema de bloqueo
     addButtonWithLock(":/Imagenes/BotonLvl1.png", ":/Imagenes/BotonLvl1M.png",
@@ -281,23 +313,216 @@ void MainWindow::Inicio()
                           limpiarMenu();
                           Nivel1();
                       });
-
     addButtonWithLock(":/Imagenes/BotonLvl2.png", ":/Imagenes/BotonLvl2M.png",
                       ":/Imagenes/BotonLvl2B.png", QPoint(550, 500), 2, [this]() {
                           limpiarMenu();
                           Nivel2();
                       });
-
     addButtonWithLock(":/Imagenes/BotonLvl3.png", ":/Imagenes/BotonLvl3M.png",
                       ":/Imagenes/BotonLvl3B.png", QPoint(1000, 525), 3, [this]() {
                           limpiarMenu();
                           Nivel3();
                       });
-
     addTransparentButton(":/Imagenes/Volver.png", ":/Imagenes/VolverM.png", QPoint(1115, 22), []() {
         qDebug() << "Saliendo del juego...";
         qApp->quit();
     });
+}
+
+void MainWindow::crearPanelPuntuaciones()
+{
+    // Cargar puntuaciones desde archivo
+    auto puntuaciones = cargarPuntuacionesDesdeArchivo();
+
+    // Crear widget contenedor para el panel de puntuaciones
+    panelPuntuaciones = new QWidget(this);
+    panelPuntuaciones->setGeometry(0, 0, 320, 490);
+    panelPuntuaciones->setStyleSheet("background-color: rgba(107, 35, 30, 255);");
+    panelPuntuaciones->show();
+
+    // Layout principal del panel
+    QVBoxLayout *layoutPrincipal = new QVBoxLayout(panelPuntuaciones);
+    layoutPrincipal->setContentsMargins(15, 15, 15, 15);
+    layoutPrincipal->setSpacing(15);
+
+    // Título del panel
+    QLabel *titulo = new QLabel("PUNTUACIONES", panelPuntuaciones);
+    titulo->setFont(QFont(fuentePersonalizada.family(), 20, QFont::Bold));
+    titulo->setStyleSheet("color: #FFD700; text-align: center;");
+    titulo->setAlignment(Qt::AlignCenter);
+    titulo->setMinimumHeight(35);
+    layoutPrincipal->addWidget(titulo);
+
+    // Separador
+    QFrame *separador1 = new QFrame(panelPuntuaciones);
+    separador1->setFrameShape(QFrame::HLine);
+    separador1->setStyleSheet("color: #FFD700;");
+    layoutPrincipal->addWidget(separador1);
+
+    // Sección de puntuaciones recientes
+    QLabel *tituloRecientes = new QLabel("RECIENTES", panelPuntuaciones);
+    tituloRecientes->setFont(QFont(fuentePersonalizada.family(), 16, QFont::Bold));
+    tituloRecientes->setStyleSheet("color: #87CEEB; text-align: center;");
+    tituloRecientes->setAlignment(Qt::AlignCenter);
+    tituloRecientes->setMinimumHeight(30);
+    layoutPrincipal->addWidget(tituloRecientes);
+
+    // Mostrar últimas 3 puntuaciones
+    auto recientes = obtenerUltimasPuntuaciones(puntuaciones, 3);
+    for (const auto &entrada : recientes) {
+        QLabel *labelFecha = new QLabel(entrada.fecha.toString("dd/MM/yyyy"), panelPuntuaciones);
+        labelFecha->setFont(QFont(fuentePersonalizada.family(), 11));
+        labelFecha->setStyleSheet("color: #FFFFFF; padding: 3px;");
+        labelFecha->setAlignment(Qt::AlignCenter);
+        labelFecha->setMinimumHeight(28);
+
+        QLabel *labelPuntuacion = new QLabel(QString("Puntos: %1").arg(entrada.puntuacion), panelPuntuaciones);
+        labelPuntuacion->setFont(QFont(fuentePersonalizada.family(), 13, QFont::Bold));
+        labelPuntuacion->setStyleSheet("color: #90EE90; padding: 5px;");
+        labelPuntuacion->setAlignment(Qt::AlignCenter);
+        labelPuntuacion->setMinimumHeight(30);
+
+        layoutPrincipal->addWidget(labelFecha);
+        layoutPrincipal->addWidget(labelPuntuacion);
+
+        // Espaciado entre entradas
+        layoutPrincipal->addSpacing(8);
+    }
+
+    // Separador
+    QFrame *separador2 = new QFrame(panelPuntuaciones);
+    separador2->setFrameShape(QFrame::HLine);
+    separador2->setStyleSheet("color: #FFD700;");
+    layoutPrincipal->addWidget(separador2);
+
+    // Sección de mejores puntuaciones
+    QLabel *tituloMejores = new QLabel("MEJORES", panelPuntuaciones);
+    tituloMejores->setFont(QFont(fuentePersonalizada.family(), 16, QFont::Bold));
+    tituloMejores->setStyleSheet("color: #FFB6C1; text-align: center;");
+    tituloMejores->setAlignment(Qt::AlignCenter);
+    tituloMejores->setMinimumHeight(30);
+    layoutPrincipal->addWidget(tituloMejores);
+
+    // Mostrar mejores 3 puntuaciones
+    auto mejores = obtenerMejoresPuntuaciones(puntuaciones, 3);
+    int posicion = 1;
+    for (const auto &entrada : mejores) {
+        QString colorPosicion;
+        QString simbolo;
+
+        switch (posicion) {
+        case 1:
+            colorPosicion = "#FFD700";
+            simbolo = "🥇";
+            break;
+        case 2:
+            colorPosicion = "#C0C0C0";
+            simbolo = "🥈";
+            break;
+        case 3:
+            colorPosicion = "#CD7F32";
+            simbolo = "🥉";
+            break;
+        }
+
+        QLabel *labelPosicion = new QLabel(QString("%1 %2° Lugar").arg(simbolo).arg(posicion), panelPuntuaciones);
+        labelPosicion->setFont(QFont(fuentePersonalizada.family(), 11));
+        labelPosicion->setStyleSheet(QString("color: %1; padding: 3px;").arg(colorPosicion));
+        labelPosicion->setAlignment(Qt::AlignCenter);
+        labelPosicion->setMinimumHeight(28);
+
+        QLabel *labelPuntuacion = new QLabel(QString("Puntos: %1").arg(entrada.puntuacion), panelPuntuaciones);
+        labelPuntuacion->setFont(QFont(fuentePersonalizada.family(), 13, QFont::Bold));
+        labelPuntuacion->setStyleSheet("color: #FFA500; padding: 5px;");
+        labelPuntuacion->setAlignment(Qt::AlignCenter);
+        labelPuntuacion->setMinimumHeight(30);
+
+        layoutPrincipal->addWidget(labelPosicion);
+        layoutPrincipal->addWidget(labelPuntuacion);
+
+        posicion++;
+        layoutPrincipal->addSpacing(6);
+    }
+
+    layoutPrincipal->addStretch();
+}
+
+QVector<MainWindow::EntradaPuntuacion> MainWindow::cargarPuntuacionesDesdeArchivo()
+{
+    QVector<MainWindow::EntradaPuntuacion> puntuaciones;
+    QString nombreArchivo = "puntuaciones_guardadas.txt";
+    QFile archivo(nombreArchivo);
+
+    if (!archivo.exists()) {
+        return puntuaciones;
+    }
+
+    if (archivo.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QTextStream in(&archivo);
+        while (!in.atEnd()) {
+            QString linea = in.readLine();
+            QStringList partes = linea.split(" - Puntuación: ");
+            if (partes.size() == 2) {
+                QDateTime fecha = QDateTime::fromString(partes[0], "yyyy-MM-dd hh:mm:ss");
+                int puntuacion = partes[1].toInt();
+
+                if (fecha.isValid() && puntuacion > 0) {
+                    MainWindow::EntradaPuntuacion entrada;
+                    entrada.fecha = fecha;
+                    entrada.puntuacion = puntuacion;
+                    puntuaciones.append(entrada);
+                }
+            }
+        }
+        archivo.close();
+    }
+
+    return puntuaciones;
+}
+
+QVector<MainWindow::EntradaPuntuacion> MainWindow::obtenerUltimasPuntuaciones(const QVector<MainWindow::EntradaPuntuacion> &puntuaciones, int cantidad)
+{
+    QVector<MainWindow::EntradaPuntuacion> ordenadas = puntuaciones;
+
+    // Ordenar por fecha (más reciente primero)
+    std::sort(ordenadas.begin(), ordenadas.end(), [](const MainWindow::EntradaPuntuacion &a, const MainWindow::EntradaPuntuacion &b) {
+        return a.fecha > b.fecha;
+    });
+
+    // Retornar solo la cantidad solicitada
+    QVector<MainWindow::EntradaPuntuacion> resultado;
+    for (int i = 0; i < qMin(cantidad, ordenadas.size()); i++) {
+        resultado.append(ordenadas[i]);
+    }
+
+    return resultado;
+}
+
+void MainWindow::limpiarPanelPuntuaciones()
+{
+    if (panelPuntuaciones) {
+        panelPuntuaciones->hide();
+        panelPuntuaciones->deleteLater();
+        panelPuntuaciones = nullptr;
+    }
+}
+
+QVector<MainWindow::EntradaPuntuacion> MainWindow::obtenerMejoresPuntuaciones(const QVector<MainWindow::EntradaPuntuacion> &puntuaciones, int cantidad)
+{
+    QVector<MainWindow::EntradaPuntuacion> ordenadas = puntuaciones;
+
+    // Ordenar por puntuación (mayor a menor)
+    std::sort(ordenadas.begin(), ordenadas.end(), [](const MainWindow::EntradaPuntuacion &a, const MainWindow::EntradaPuntuacion &b) {
+        return a.puntuacion > b.puntuacion;
+    });
+
+    // Retornar solo la cantidad solicitada
+    QVector<MainWindow::EntradaPuntuacion> resultado;
+    for (int i = 0; i < qMin(cantidad, ordenadas.size()); i++) {
+        resultado.append(ordenadas[i]);
+    }
+
+    return resultado;
 }
 
 void MainWindow::limpiarMenu()
@@ -329,6 +554,22 @@ void MainWindow::limpiarMenu()
 
 void MainWindow::limpiarTodo()
 {
+    detenerFisicasViento();
+
+    limpiarPanelPuntuaciones();
+
+    if (audioNivel) {
+        audioNivel->stop();
+        audioNivel->deleteLater();
+        audioNivel = nullptr;
+    }
+
+    if (audioDisparo) {
+        audioDisparo->stop();
+        audioDisparo->deleteLater();
+        audioDisparo = nullptr;
+    }
+
     // Detener y limpiar timers PRIMERO
     if (timerParabola) {
         timerParabola->stop();
@@ -342,7 +583,14 @@ void MainWindow::limpiarTodo()
         timerCronometro = nullptr;
     }
 
-    // AGREGAR: Limpiar timer de basura4
+    // Limpiar timer de fondo nivel 3
+    if (timerFondoNivel3) {
+        timerFondoNivel3->stop();
+        timerFondoNivel3->deleteLater();
+        timerFondoNivel3 = nullptr;
+    }
+
+    // Limpiar timer de basura4
     if (timerGenerarBasura4) {
         timerGenerarBasura4->stop();
         timerGenerarBasura4->deleteLater();
@@ -358,6 +606,15 @@ void MainWindow::limpiarTodo()
 
         // Limpiar elementos UI
         limpiarElementosUI();
+
+        // Limpiar fondo nivel 3
+        if (fondoNivel3) {
+            if (fondoNivel3->scene()) {
+                scene->removeItem(fondoNivel3);
+            }
+            delete fondoNivel3;
+            fondoNivel3 = nullptr;
+        }
 
         // Limpiar saibaman
         if (saibaman) {
@@ -423,6 +680,53 @@ void MainWindow::limpiarTodo()
     permitirMovimientoVertical = false;
 }
 
+void MainWindow::reproducirSonidoEfecto(const QString &archivoAudio)
+{
+    // Detener audio de disparo anterior si existe
+    if (audioDisparo) {
+        audioDisparo->stop();
+        audioDisparo->deleteLater();
+        audioDisparo = nullptr;
+    }
+
+    // Crear nuevo reproductor para el sonido de disparo
+    audioDisparo = new QMediaPlayer(this);
+    audioDisparo->setMedia(QUrl(archivoAudio));
+    audioDisparo->setVolume(100);
+    audioDisparo->play();
+
+    qDebug() << "Reproduciendo sonido de disparo";
+}
+
+void MainWindow::reproducirAudioNivel(const QString &archivoAudio, bool loop)
+{
+    // Detener audio anterior si existe
+    if (audioNivel) {
+        audioNivel->stop();
+        audioNivel->deleteLater();
+        audioNivel = nullptr;
+    }
+
+    // Crear nuevo reproductor para el nivel
+    audioNivel = new QMediaPlayer(this);
+    audioNivel->setMedia(QUrl(archivoAudio));
+    audioNivel->setVolume(40);
+
+    if (loop) {
+        // Conectar para reiniciar cuando termine
+        connect(audioNivel, &QMediaPlayer::mediaStatusChanged, this,
+                [this](QMediaPlayer::MediaStatus status) {
+                    if (status == QMediaPlayer::EndOfMedia) {
+                        audioNivel->setPosition(0);
+                        audioNivel->play();
+                    }
+                });
+    }
+
+    audioNivel->play();
+    qDebug() << "Reproduciendo audio de nivel:" << archivoAudio << (loop ? "(loop)" : "");
+}
+
 void MainWindow::agregarBotonVolver()
 {
     addTransparentButton(":/Imagenes/Volver.png", ":/Imagenes/VolverM.png", QPoint(1115, 22), [this]() {
@@ -440,6 +744,7 @@ void MainWindow::Nivel1()
     tiempoRestante = 60;
     nivelMaximoDesbloqueado = 1;
 
+    reproducirAudioNivel("qrc:/Audios/Nivel1.mp3");
 
     vista = new QGraphicsView(this);
     vista->setGeometry(0, 0, 1200, 675);
@@ -511,12 +816,21 @@ void MainWindow::actualizarCronometro()
             timerCronometro->stop();
         }
 
+        // Detener físicas de viento
+        detenerFisicasViento();
+
+        // Detener timer del fondo nivel 3 cuando termine el tiempo
+        if (timerFondoNivel3) {
+            timerFondoNivel3->stop();
+        }
+
         // Verificar si ganó el nivel
         if (puntuacion >= 10) {
             // Determinar qué nivel se completó y guardar puntuación
             if (permitirMovimientoVertical) {
                 // Nivel 3 completado
                 puntuacionTotal = puntuacion;
+                guardarPuntuacionConFecha(puntuacionTotal);
                 qDebug() << "¡Nivel 3 completado! Puntuación:" << puntuacion;
                 nivelMaximoDesbloqueado = 1;
                 puntuacion = 0;
@@ -645,6 +959,9 @@ void MainWindow::manejarFinAnimacionEvento()
 
     if (lineaParabola) lineaParabola->hide();
 
+    // REPRODUCIR SONIDO DE DISPARO ANTES DE CREAR LA BALA
+    reproducirSonidoEfecto("qrc:/Audios/Disparo.mp3");
+
     QPointF origen(148, 153);
     Bala *bala = new Bala(origen, anguloBala, velocidadBala);
     if (!bala) {
@@ -665,7 +982,7 @@ void MainWindow::manejarFinAnimacionEvento()
                 if (saibaman && saibaman->scene() == scenePtr) {
                     // Iniciar animación de muerte en lugar de eliminar inmediatamente
                     saibaman->iniciarAnimacionMuerte();
-
+                    reproducirSonidoEfecto("qrc:/Audios/Muerte.mp3");
                     // Conectar señal para cuando termine la animación de muerte
                     connect(saibaman, &Saibaman::animacionMuerteCompleta, this, [this, saibaman]() {
                         if (scene && saibaman && saibaman->scene() == scene) {
@@ -692,10 +1009,12 @@ void MainWindow::manejarFinAnimacionEvento()
         if((puntuacion-5) < 0){
             puntuacion = 0;
             actualizarTextoPuntaje();
+            reproducirSonidoEfecto("qrc:/Audios/VidaMenos.mp3");
         }
         else{
             puntuacion -= 5;
             actualizarTextoPuntaje();
+            reproducirSonidoEfecto("qrc:/Audios/VidaMenos.mp3");
         }
         if (indicadorVida) {
             indicadorVida->setVida(vida);
@@ -752,6 +1071,7 @@ void MainWindow::Nivel2()
     nivelMaximoDesbloqueado = 2;
     tiempoRestante = 60;
 
+    reproducirAudioNivel("qrc:/Audios/Nivel2.mp3");
 
     vista = new QGraphicsView(this);
     vista->setGeometry(0, 0, 1200, 675);
@@ -785,6 +1105,7 @@ void MainWindow::Nivel2()
     indicadorVida->setPos(0, 529);
     indicadorVida->setScale(1.5);
     indicadorVida->setVida(vida);
+    indicadorVida->setZValue(3);
 
     // Inicializar cronómetro
     timerCronometro = new QTimer(this);
@@ -801,6 +1122,7 @@ void MainWindow::Nivel3()
     puntuacion = puntuacionNivel2Ganada;
     tiempoRestante = 60;
 
+    reproducirAudioNivel("qrc:/Audios/Nivel3.mp3");
 
     vista = new QGraphicsView(this);
     vista->setGeometry(0, 0, 1200, 675);
@@ -813,8 +1135,9 @@ void MainWindow::Nivel3()
     vista->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     vista->setFixedSize(1200, 675);
 
-    QGraphicsPixmapItem *fondo = new QGraphicsPixmapItem(QPixmap(":/Imagenes/FondoNivel3.png"));
-    scene->addItem(fondo);
+    fondoNivel3 = new QGraphicsPixmapItem(QPixmap(":/Imagenes/FondoNivel3.png"));
+    scene->addItem(fondoNivel3);
+    fondoNivel3->setZValue(-1);
 
     // Crear elementos de UI
     crearElementosUI(3);
@@ -829,19 +1152,162 @@ void MainWindow::Nivel3()
     controlesActivos = true;
     permitirMovimientoVertical = true;
 
+    // INICIAR FÍSICAS DE VIENTO
+    iniciarFisicasViento();
+
     indicadorVida = new IndicadorVida();
     scene->addItem(indicadorVida);
     indicadorVida->setPos(0, 529);
     indicadorVida->setScale(1.5);
     indicadorVida->setVida(vida);
+    indicadorVida->setZValue(3);
 
     // Inicializar cronómetro
     timerCronometro = new QTimer(this);
     connect(timerCronometro, &QTimer::timeout, this, &MainWindow::actualizarCronometro);
     timerCronometro->start(1000);
 
+    timerFondoNivel3 = new QTimer(this);
+    connect(timerFondoNivel3, &QTimer::timeout, this, &MainWindow::moverFondoNivel3);
+    timerFondoNivel3->start(30); // Cada 30ms, como una animación fluida
+
     // Iniciar generación de basura horizontal
     iniciarGeneracionBasura(Basura::Horizontal);
+}
+
+void MainWindow::moverFondoNivel3()
+{
+    if (!fondoNivel3) return;
+
+    // Mover el fondo hacia la izquierda
+    QPointF pos = fondoNivel3->pos();
+    pos.setX(pos.x() - 1); // Velocidad del viento, puedes ajustar a -2 o -0.5
+    fondoNivel3->setPos(pos);
+
+    // Si el fondo se ha salido totalmente, reiniciar su posición (para hacerlo infinito)
+    if (pos.x() <= -fondoNivel3->pixmap().width()) {
+        fondoNivel3->setPos(0, pos.y());
+    }
+}
+
+void MainWindow::iniciarFisicasViento()
+{
+    if (!goku) return;
+
+    vientoActivo = true;
+    velocidadGokuX = 0.0;
+    velocidadGokuY = 0.0;
+
+    // Timer para aplicar físicas cada 16ms (~60 FPS)
+    timerFisicasViento = new QTimer(this);
+    connect(timerFisicasViento, &QTimer::timeout, this, &MainWindow::aplicarFisicasViento);
+    timerFisicasViento->start(16);
+
+    qDebug() << "Físicas de viento iniciadas";
+}
+
+void MainWindow::detenerFisicasViento()
+{
+    if (timerFisicasViento) {
+        timerFisicasViento->stop();
+        timerFisicasViento->deleteLater();
+        timerFisicasViento = nullptr;
+    }
+
+    vientoActivo = false;
+    velocidadGokuX = 0.0;
+    velocidadGokuY = 0.0;
+
+    qDebug() << "Físicas de viento detenidas";
+}
+
+void MainWindow::aplicarFisicasViento()
+{
+    if (!goku || !vientoActivo) return;
+
+    // Calcular y aplicar fuerzas
+    calcularFuerzaViento();
+    aplicarResistenciaAire();
+    actualizarPosicionGoku();
+    verificarLimitesGoku();
+}
+
+void MainWindow::calcularFuerzaViento()
+{
+    // Fuerza del viento basada en la velocidad del fondo
+    fuerzaViento = velocidadViento * aceleracionViento;
+
+    // Aplicar fuerza a la velocidad de Goku
+    velocidadGokuX -= fuerzaViento; // Empujar hacia la izquierda
+
+    // Limitar velocidad máxima del viento
+    if (velocidadGokuX < -5.0) {
+        velocidadGokuX = -5.0;
+    }
+
+    // Agregar turbulencia ocasional
+    if (QRandomGenerator::global()->bounded(100) < 5) { // 5% de probabilidad
+        double turbulencia = QRandomGenerator::global()->bounded(-50, 51) / 100.0; // -0.5 a 0.5
+        velocidadGokuY += turbulencia;
+    }
+}
+
+void MainWindow::aplicarResistenciaAire()
+{
+    // Aplicar resistencia del aire (fricción)
+    velocidadGokuX *= resistenciaAire;
+    velocidadGokuY *= resistenciaAire;
+
+    // Eliminar velocidades muy pequeñas para evitar movimientos imperceptibles
+    if (qAbs(velocidadGokuX) < 0.01) velocidadGokuX = 0.0;
+    if (qAbs(velocidadGokuY) < 0.01) velocidadGokuY = 0.0;
+}
+
+void MainWindow::actualizarPosicionGoku()
+{
+    if (!goku) return;
+
+    QPointF posicionActual = goku->pos();
+
+    // Aplicar velocidades
+    posicionActual.setX(posicionActual.x() + velocidadGokuX);
+    posicionActual.setY(posicionActual.y() + velocidadGokuY);
+
+    goku->setPos(posicionActual);
+}
+
+void MainWindow::verificarLimitesGoku()
+{
+    if (!goku) return;
+
+    QPointF pos = goku->pos();
+    bool posicionCambiada = false;
+
+    // Límites horizontales
+    if (pos.x() < 0) {
+        pos.setX(0);
+        velocidadGokuX = 0; // Detener movimiento al chocar con el borde
+        posicionCambiada = true;
+    } else if (pos.x() > 1017) { // 1200 - ancho de Goku escalado
+        pos.setX(1017);
+        velocidadGokuX = 0;
+        posicionCambiada = true;
+    }
+
+    // Límites verticales
+    if (pos.y() < 0) {
+        pos.setY(0);
+        velocidadGokuY = 0;
+        posicionCambiada = true;
+    } else if (pos.y() > 489) { // 675 - alto de Goku escalado
+        pos.setY(489);
+        velocidadGokuY = 0;
+        posicionCambiada = true;
+    }
+
+    if (posicionCambiada) {
+        goku->setPos(pos);
+    }
 }
 
 void MainWindow::keyPressEvent(QKeyEvent *event)
@@ -880,19 +1346,45 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
 
     teclasPresionadas.insert(key);
 
-    switch (key) {
-    case Qt::Key_W:
-        if (permitirMovimientoVertical) goku->moverseArriba();
-        break;
-    case Qt::Key_S:
-        if (permitirMovimientoVertical) goku->moverseAbajo();
-        break;
-    case Qt::Key_A:
-        goku->moverseIzquierda();
-        break;
-    case Qt::Key_D:
-        goku->moverseDerecha();
-        break;
+    if (vientoActivo && permitirMovimientoVertical) {
+        // En nivel 3, los controles modifican la velocidad en lugar de mover directamente
+        switch (key) {
+        case Qt::Key_W:
+            velocidadGokuY -= 2.0; // Impulso hacia arriba
+            break;
+        case Qt::Key_S:
+            velocidadGokuY += 2.0; // Impulso hacia abajo
+            break;
+        case Qt::Key_A:
+            velocidadGokuX -= 3.0; // Impulso hacia la izquierda (contra el viento)
+            break;
+        case Qt::Key_D:
+            velocidadGokuX += 2.0; // Impulso hacia la derecha
+            break;
+        }
+
+        // Limitar velocidades máximas del jugador
+        if (velocidadGokuX < -5.0) velocidadGokuX = -5.0;
+        if (velocidadGokuX > 3.0) velocidadGokuX = 3.0;
+        if (velocidadGokuY < -3.0) velocidadGokuY = -3.0;
+        if (velocidadGokuY > 3.0) velocidadGokuY = 3.0;
+
+    } else {
+        // Nivel 2: controles normales
+        switch (key) {
+        case Qt::Key_W:
+            if (permitirMovimientoVertical) goku->moverseArriba();
+            break;
+        case Qt::Key_S:
+            if (permitirMovimientoVertical) goku->moverseAbajo();
+            break;
+        case Qt::Key_A:
+            goku->moverseIzquierda();
+            break;
+        case Qt::Key_D:
+            goku->moverseDerecha();
+            break;
+        }
     }
 }
 
@@ -903,7 +1395,9 @@ void MainWindow::keyReleaseEvent(QKeyEvent *event)
     int key = event->key();
     teclasPresionadas.remove(key);
 
-    if (key == Qt::Key_A || key == Qt::Key_D) {
+    // En nivel 3 con físicas, no necesitamos detener el movimiento
+    // porque las físicas se encargan del movimiento continuo
+    if (!vientoActivo && (key == Qt::Key_A || key == Qt::Key_D)) {
         goku->detenerMovimiento();
     }
 }
@@ -980,6 +1474,45 @@ void MainWindow::addButtonWithLock(const QString &imgNormal, const QString &imgH
 
     boton->show();
     menuButtons.append(boton);
+}
+
+void MainWindow::guardarPuntuacionConFecha(int puntuacion)
+{
+    QString nombreArchivo = "puntuaciones_guardadas.txt";
+    QFile archivo(nombreArchivo);
+
+    QString nuevaEntrada = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss") +
+                           " - Puntuación: " + QString::number(puntuacion);
+
+    QStringList lineasExistentes;
+
+    if (archivo.exists()) {
+        if (archivo.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream in(&archivo);
+            while (!in.atEnd()) {
+                lineasExistentes.append(in.readLine());
+            }
+            archivo.close();
+        } else {
+            qDebug() << "No se pudo leer el archivo de puntuaciones.";
+            return;
+        }
+    }
+
+    // Agregar la nueva entrada
+    lineasExistentes.append(nuevaEntrada);
+
+    // Escribir todo de nuevo (sobrescribir el archivo completo)
+    if (archivo.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+        QTextStream out(&archivo);
+        for (const QString &linea : lineasExistentes) {
+            out << linea << "\n";
+        }
+        archivo.close();
+        qDebug() << "Puntuación guardada correctamente.";
+    } else {
+        qDebug() << "No se pudo abrir el archivo para escribir.";
+    }
 }
 
 void MainWindow::iniciarGeneracionBasura(Basura::TipoMovimiento tipo)
@@ -1145,10 +1678,12 @@ void MainWindow::eliminarBasura(Basura *basura, bool tocadaPorGoku)
         if((puntuacion-5) < 0){
             puntuacion = 0;
             actualizarTextoPuntaje();
+            reproducirSonidoEfecto("qrc:/Audios/VidaMenos.mp3");
         }
         else{
             puntuacion -= 5;
             actualizarTextoPuntaje();
+            reproducirSonidoEfecto("qrc:/Audios/VidaMenos.mp3");
         }
         if (indicadorVida) {
             indicadorVida->setVida(vida);
@@ -1158,6 +1693,14 @@ void MainWindow::eliminarBasura(Basura *basura, bool tocadaPorGoku)
             // Game Over
             if (timerCronometro) {
                 timerCronometro->stop();
+            }
+
+            // Detener físicas de viento
+            detenerFisicasViento();
+
+            // Detener timer del fondo nivel 3 cuando se pierde
+            if (timerFondoNivel3) {
+                timerFondoNivel3->stop();
             }
 
             // Restaurar puntuación según el nivel
@@ -1190,8 +1733,6 @@ void MainWindow::eliminarBasura(Basura *basura, bool tocadaPorGoku)
     }
     basura->deleteLater();
 }
-
-
 
 void MainWindow::verificarColisionesPeriodicamente()
 {
@@ -1256,6 +1797,23 @@ MainWindow::~MainWindow()
     }
     if (timerCronometro) {
         timerCronometro->stop();
+    }
+    // Detener timer del fondo nivel 3
+    if (timerFondoNivel3) {
+        timerFondoNivel3->stop();
+    }
+    // Detener físicas de viento
+    if (timerFisicasViento) {
+        timerFisicasViento->stop();
+    }
+
+    // Detener audio del nivel
+    if (audioNivel) {
+        audioNivel->stop();
+    }
+
+    if (audioDisparo) {
+        audioDisparo->stop();
     }
 
     // Desconectar todas las señales
